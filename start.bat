@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 :: Check if virtual environment exists
@@ -20,13 +21,18 @@ if exist .env (
         )
     )
 )
-setlocal enabledelayedexpansion
 
 :: Default values
 if not defined API_HOST set API_HOST=0.0.0.0
 if not defined API_PORT set API_PORT=8001
 if not defined API_WORKERS set API_WORKERS=1
 if not defined LOG_LEVEL set LOG_LEVEL=info
+
+:: Lowercase LOG_LEVEL for uvicorn (it rejects uppercase like INFO)
+set LOG_LEVEL_LOWER=%LOG_LEVEL%
+for %%L in (a b c d e f g h i j k l m n o p q r s t u v w x y z) do (
+    call set "LOG_LEVEL_LOWER=%%LOG_LEVEL_LOWER:%%L=%%L%%"
+)
 
 echo ============================================================
 echo Starting VibeVoice API Server
@@ -35,11 +41,11 @@ echo.
 echo Server: http://%API_HOST%:%API_PORT%
 echo API Docs: http://%API_HOST%:%API_PORT%/docs
 echo Workers: %API_WORKERS%
-echo Log Level: %LOG_LEVEL%
+echo Log Level: %LOG_LEVEL_LOWER%
 echo.
 echo Press Ctrl+C to stop the server
 echo ============================================================
 echo.
 
 :: Start the server
-uvicorn api.main:app --host %API_HOST% --port %API_PORT% --workers %API_WORKERS% --log-level %LOG_LEVEL%
+uvicorn api.main:app --host %API_HOST% --port %API_PORT% --workers %API_WORKERS% --log-level %LOG_LEVEL_LOWER%
