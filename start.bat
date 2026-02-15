@@ -29,10 +29,7 @@ if not defined API_WORKERS set API_WORKERS=1
 if not defined LOG_LEVEL set LOG_LEVEL=info
 
 :: Lowercase LOG_LEVEL for uvicorn (it rejects uppercase like INFO)
-set LOG_LEVEL_LOWER=%LOG_LEVEL%
-for %%L in (a b c d e f g h i j k l m n o p q r s t u v w x y z) do (
-    call set "LOG_LEVEL_LOWER=%%LOG_LEVEL_LOWER:%%L=%%L%%"
-)
+for /f %%i in ('python -c "print(''%LOG_LEVEL%''.lower())"') do set LOG_LEVEL_LOWER=%%i
 
 echo ============================================================
 echo Starting VibeVoice API Server
