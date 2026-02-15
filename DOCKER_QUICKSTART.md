@@ -6,6 +6,8 @@
 - NVIDIA GPU with CUDA support
 - NVIDIA Container Toolkit installed
 
+**Windows users:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) with WSL2 backend enabled. GPU support requires the [NVIDIA CUDA on WSL](https://docs.nvidia.com/cuda/wsl-user-guide/) driver.
+
 ## Quick Start
 
 ### 1. Setup Environment
@@ -52,11 +54,19 @@ open http://localhost:8001/docs
 VIBEVOICE_MODEL_PATH=microsoft/VibeVoice-1.5B
 
 # Voice directory on HOST (required)
+# Linux/macOS:
 VOICES_DIR=/path/to/your/voices/on/host
+# Windows:
+# VOICES_DIR=C:\Users\username\voices
 
 # Optional: HuggingFace cache for faster model loading
+# Linux/macOS:
 HF_CACHE_DIR=~/.cache/huggingface
+# Windows:
+# HF_CACHE_DIR=C:\Users\username\.cache\huggingface
 ```
+
+> **Windows note:** Use full Windows paths (e.g., `C:\Users\...`). The `~` tilde shortcut does not expand on Windows. Docker Desktop will handle converting Windows paths to Linux mount paths automatically.
 
 ### GPU Configuration
 

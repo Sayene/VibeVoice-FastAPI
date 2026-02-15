@@ -372,13 +372,16 @@ sudo apt install ffmpeg
 
 # macOS
 brew install ffmpeg
+
+# Windows: Download from https://ffmpeg.org/download.html and add to PATH
 ```
 
 ### Server Won't Start
 
-1. Check Python version (must be 3.10 or 3.11):
+1. Check Python version:
    ```bash
-   python3 --version
+   python3 --version   # Linux/macOS
+   python --version     # Windows
    ```
 
 2. Verify dependencies:
