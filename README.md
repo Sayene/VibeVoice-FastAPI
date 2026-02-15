@@ -23,17 +23,24 @@ A production-ready FastAPI server that exposes the VibeVoice TTS model as an Ope
 
 ## 📋 Quick Start
 
-### Interactive Installer (Recommended)
+### One-Click Install (Recommended)
 
-The easiest way to get started — works on Linux, macOS, and Windows:
-
+**Linux / macOS:**
 ```bash
-git clone https://github.com/ncoder-ai/VibeVoice-FastAPI.git
-cd VibeVoice-FastAPI
-python install.py (or python3 install.py)
+curl -fsSL https://raw.githubusercontent.com/ncoder-ai/VibeVoice-FastAPI/main/install.sh | bash
 ```
 
-The installer will detect your GPU, ask a few questions, generate your config, and start the server automatically.
+**Windows (PowerShell):**
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ncoder-ai/VibeVoice-FastAPI/main/install.bat" -OutFile "install.bat"; .\install.bat
+```
+
+This clones the repo, detects your GPU, walks you through setup, and starts the server automatically.
+
+Or if you already have the repo cloned:
+```bash
+python3 install.py
+```
 
 ### Docker Deployment (Manual)
 
