@@ -59,6 +59,7 @@ fi
 
 echo ""
 
-# Run interactive installer
+# Run interactive installer with stdin from terminal
+# (needed when this script is piped via curl | bash)
 cd "$INSTALL_DIR"
-$PYTHON_CMD install.py
+$PYTHON_CMD install.py </dev/tty
