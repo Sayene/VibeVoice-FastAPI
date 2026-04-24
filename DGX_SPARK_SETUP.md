@@ -75,8 +75,15 @@ cp docker-env.example .env
 Edit `.env` and set at minimum:
 
 ```bash
-# HuggingFace model ID — will auto-download to HF_CACHE_DIR on first run
+# HuggingFace model ID — will auto-download to HF_CACHE_DIR on first run.
+# microsoft/VibeVoice-1.5B is a GATED repo: you must (a) accept its license on
+# https://huggingface.co/microsoft/VibeVoice-1.5B while logged in, and (b) set
+# HF_TOKEN below with a token that has "read" access.
 VIBEVOICE_MODEL_PATH=microsoft/VibeVoice-1.5B
+
+# HuggingFace token — get one at https://huggingface.co/settings/tokens
+# Required for gated models. Leave unset for fully public models.
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Blackwell supports bfloat16 natively
 VIBEVOICE_DTYPE=bfloat16
@@ -99,6 +106,18 @@ mkdir -p ~/.cache/huggingface ~/vibevoice-models ~/vibevoice-voices
 # Seed with the bundled demo voices so you have something to start with
 cp demo/voices/* ~/vibevoice-voices/
 ```
+
+### Verify the HF token before launch
+
+```bash
+# Should return {"name": "...", ...} and NOT an error.
+curl -H "Authorization: Bearer $(grep ^HF_TOKEN .env | cut -d= -f2)" \
+     https://huggingface.co/api/whoami-v2
+```
+
+If you get `Invalid credentials`, regenerate the token. If you get
+`Access to model microsoft/VibeVoice-1.5B is restricted`, visit the model
+page while logged in and click **Access repository**.
 
 ## 4. Build and launch
 

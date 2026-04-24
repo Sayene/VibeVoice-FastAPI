@@ -4,6 +4,20 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] — 2026-04-24
+
+### Added
+
+- **HuggingFace auth forwarding on Spark**
+  - `docker-compose.spark.yml` now forwards `HF_TOKEN` (and the legacy
+    `HUGGING_FACE_HUB_TOKEN` alias) from `.env` into the container, so gated
+    models such as `microsoft/VibeVoice-1.5B` download on first launch
+    without an interactive `huggingface-cli login`.
+  - Setup guide documents how to generate a token, accept the gated-repo
+    license, and verify the token against `whoami-v2` before building.
+- Swagger UI / ReDoc / OpenAPI endpoints documented in the DGX Spark guide,
+  with an SSH tunnel recipe for remote access.
+
 ## [0.3.0] — 2026-04-24
 
 ### Added
