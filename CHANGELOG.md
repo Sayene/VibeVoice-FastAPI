@@ -4,6 +4,55 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.4] — 2026-04-24
+
+### Fixed
+
+- **Reference voice audio bleeding into generated output** — long or
+  silence-padded reference clips caused the model to reproduce fragments of
+  the reference file in the synthesised speech. Fixed by pre-processing every
+  reference clip through `prepare_voice_sample()` before it reaches the model:
+  1. Leading/trailing silence stripped via `librosa.effects.trim` (default
+     threshold: 30 dB).
+  2. Clip capped at `VOICE_SAMPLE_MAX_DURATION` seconds (default: 10 s).
+  Applied to all entry points — on-disk presets loaded by `VoiceManager` and
+  base64 inline clips sent in the `/v1/vibevoice/generate` request body.
+
+### Added
+
+- Three new env/settings knobs (documented in `docker-env.example`):
+  - `VOICE_SAMPLE_MAX_DURATION` (default `10.0`) — max seconds of reference audio.
+  - `VOICE_SAMPLE_TRIM_SILENCE` (default `true`) — enable silence trimming.
+  - `VOICE_SAMPLE_TRIM_DB` (default `30.0`) — dB threshold for silence trim.
+
+## [0.3.3] — 2026-04-24
+
+### Added
+
+- **Optional `bitsandbytes` install on Spark** — `Dockerfile.spark` now attempts
+  `pip install "bitsandbytes>=0.45"` (alongside torchao) so pre-quantized
+  bnb-8bit HF checkpoints such as `FabioSarracino/VibeVoice-Large-Q8` load
+  out of the box. Install is best-effort; if no aarch64 wheel matches, the
+  build continues and bnb-quantized models will fail with a clear error
+  while full-precision / torchao paths still work.
+
+### Notes
+
+- On the Spark (128 GB unified memory) there is usually no need for bnb int8.
+  Using `rsxdalv/VibeVoice-Large` or `microsoft/VibeVoice-1.5B` in bf16 is
+  faster and avoids the bnb-on-aarch64 dependency entirely.
+
+## [0.3.2] — 2026-04-24
+
+### Fixed
+
+- **`ModuleNotFoundError: No module named 'transformers'` on Spark startup** —
+  `Dockerfile.spark` was installing the `vibevoice` package with `--no-deps`
+  (an over-cautious attempt to protect the NGC-provided torch), which also
+  skipped `transformers`, `accelerate`, `diffusers`, `librosa`, and `numba`.
+  `torch` in `pyproject.toml` has no version pin, so `pip install -e .`
+  without `--no-deps` accepts the NGC torch and installs the rest.
+
 ## [0.3.1] — 2026-04-24
 
 ### Added

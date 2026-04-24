@@ -11,21 +11,43 @@ from pydub import AudioSegment
 import io
 
 
+def prepare_voice_sample(
+    audio: np.ndarray,
+    sample_rate: int = 24000,
+    max_duration: float = 10.0,
+    trim_silence: bool = True,
+    trim_db: float = 30.0,
+) -> np.ndarray:
+    """Trim silence and cap length of a reference voice clip.
+
+    Long or silence-padded reference clips cause the model to reproduce
+    fragments of the reference in its output. Keeping clips short (≤ 10 s)
+    and silence-free eliminates the artefact.
+    """
+    if trim_silence:
+        try:
+            audio, _ = librosa.effects.trim(audio, top_db=trim_db)
+        except Exception:
+            pass
+
+    max_samples = int(max_duration * sample_rate)
+    if len(audio) > max_samples:
+        audio = audio[:max_samples]
+
+    return audio
+
+
 class VoiceManager:
     """Manages voice presets and maps OpenAI voices to VibeVoice presets."""
-    
-    def __init__(self, voices_dir: str = "demo/voices", openai_voice_mapping: Optional[str] = None):
-        """
-        Initialize voice manager.
-        
-        Args:
-            voices_dir: Directory containing voice preset files
-            openai_voice_mapping: JSON string mapping OpenAI voice names to VibeVoice preset names
-        """
+
+    def __init__(self, voices_dir: str = "demo/voices", openai_voice_mapping: Optional[str] = None,
+                 max_duration: float = 10.0, trim_silence: bool = True, trim_db: float = 30.0):
         self.voices_dir = Path(voices_dir)
         self.voice_presets: Dict[str, str] = {}
-        
-        # Parse OpenAI voice mapping from JSON string
+        self._max_duration = max_duration
+        self._trim_silence = trim_silence
+        self._trim_db = trim_db
+
         if openai_voice_mapping:
             try:
                 self.OPENAI_VOICE_MAPPING = json.loads(openai_voice_mapping)
@@ -34,7 +56,7 @@ class VoiceManager:
                 self.OPENAI_VOICE_MAPPING = self._get_default_mapping()
         else:
             self.OPENAI_VOICE_MAPPING = self._get_default_mapping()
-        
+
         self.load_voice_presets()
     
     @staticmethod
@@ -157,12 +179,18 @@ class VoiceManager:
                 if len(wav.shape) > 1:
                     wav = np.mean(wav, axis=1)
             
-            # Resample if needed
             if sr != target_sr:
                 wav = librosa.resample(wav, orig_sr=sr, target_sr=target_sr)
-            
-            return wav.astype(np.float32)
-            
+
+            wav = prepare_voice_sample(
+                wav.astype(np.float32),
+                sample_rate=target_sr,
+                max_duration=self._max_duration,
+                trim_silence=self._trim_silence,
+                trim_db=self._trim_db,
+            )
+            return wav
+
         except Exception as e:
             print(f"Error loading voice {voice_name} from {voice_path}: {e}")
             return None

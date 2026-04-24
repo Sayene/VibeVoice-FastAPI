@@ -14,7 +14,7 @@ from api.models import (
     HealthResponse
 )
 from api.services.tts_service import TTSService
-from api.services.voice_manager import VoiceManager
+from api.services.voice_manager import VoiceManager, prepare_voice_sample
 from api.utils.audio_utils import audio_to_bytes, get_audio_duration
 from api.utils.streaming import create_streaming_response
 from api.config import settings
@@ -81,8 +81,15 @@ async def generate_speech(
                     if len(audio_data.shape) > 1:
                         import numpy as np
                         audio_data = np.mean(audio_data, axis=1)
-                    
-                    voice_samples.append(audio_data.astype('float32'))
+
+                    audio_data = prepare_voice_sample(
+                        audio_data.astype("float32"),
+                        sample_rate=24000,
+                        max_duration=settings.voice_sample_max_duration,
+                        trim_silence=settings.voice_sample_trim_silence,
+                        trim_db=settings.voice_sample_trim_db,
+                    )
+                    voice_samples.append(audio_data)
                     
                 except Exception as e:
                     raise HTTPException(

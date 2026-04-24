@@ -36,7 +36,10 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing voice manager...")
     voice_manager = VoiceManager(
         voices_dir=settings.voices_dir,
-        openai_voice_mapping=settings.openai_voice_mapping
+        openai_voice_mapping=settings.openai_voice_mapping,
+        max_duration=settings.voice_sample_max_duration,
+        trim_silence=settings.voice_sample_trim_silence,
+        trim_db=settings.voice_sample_trim_db,
     )
     
     # Initialize TTS service
@@ -72,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="VibeVoice TTS API",
     description="OpenAI-compatible Text-to-Speech API powered by VibeVoice",
-    version="0.3.1",
+    version="0.3.4",
     lifespan=lifespan
 )
 
@@ -95,7 +98,7 @@ async def root():
     """Root endpoint with API information."""
     return {
         "name": "VibeVoice TTS API",
-        "version": "0.3.1",
+        "version": "0.3.3",
         "description": "OpenAI-compatible Text-to-Speech API powered by VibeVoice",
         "endpoints": {
             "openai_compatible": {

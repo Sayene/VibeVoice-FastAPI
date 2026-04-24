@@ -43,6 +43,27 @@ class Settings(BaseSettings):
         description="torch.compile mode: 'default', 'reduce-overhead', or 'max-autotune' (slower compile, faster inference)"
     )
 
+    # Voice sample pre-processing
+    voice_sample_max_duration: float = Field(
+        default=10.0,
+        description=(
+            "Max duration (seconds) of reference voice clip fed to the model. "
+            "Clips longer than this are trimmed to avoid reference audio bleeding "
+            "into generated output. 8–12 s is the sweet spot for VibeVoice."
+        )
+    )
+    voice_sample_trim_silence: bool = Field(
+        default=True,
+        description=(
+            "Strip leading/trailing silence from reference voice clips before "
+            "feeding them to the model."
+        )
+    )
+    voice_sample_trim_db: float = Field(
+        default=30.0,
+        description="Silence threshold in dB for librosa.effects.trim."
+    )
+
     # Voice Configuration
     voices_dir: str = Field(
         default="/app/voices",  # Docker default; override with VOICES_DIR=demo/voices for local dev

@@ -56,7 +56,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      # Large quantized models (e.g. VibeVoice-Large-Q8 ~10 GB) can take several
+      # minutes to download + place on first boot. Keep generous.
+      start_period: 600s
 
     logging:
       driver: "json-file"

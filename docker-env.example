@@ -48,6 +48,13 @@ VIBEVOICE_INFERENCE_STEPS=10
 # Supported formats: .wav, .mp3, .flac, .ogg, .m4a, .aac
 VOICES_DIR=./demo/voices
 
+# Reference voice sample pre-processing
+# Long or silence-padded clips cause the model to reproduce fragments of the
+# reference audio in its output. Trim silence and cap to 8-12 s to avoid this.
+VOICE_SAMPLE_MAX_DURATION=10.0
+VOICE_SAMPLE_TRIM_SILENCE=true
+VOICE_SAMPLE_TRIM_DB=30.0
+
 # OpenAI voice name to VibeVoice preset mapping (JSON format)
 # Maps OpenAI-compatible voice names (alloy, echo, fable, onyx, nova, shimmer) to your voice preset files
 # Format: {"openai_voice_name": "vibevoice_preset_name", ...}

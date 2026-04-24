@@ -33,14 +33,23 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY requirements-api.txt ./
 
-# torchao provides INT8 quantization. On aarch64 there is no prebuilt wheel for
-# every torch version, so fall back gracefully; the app works without it.
+# Optional quantization backends. Both have patchy aarch64 wheel availability —
+# fall back gracefully if the wheel isn't buildable. The app still runs full-
+# precision without them.
+#   - torchao: INT8/INT4 (used when VIBEVOICE_QUANTIZATION=int8_torchao)
+#   - bitsandbytes: 8-bit (required by pre-quantized HF checkpoints such as
+#     FabioSarracino/VibeVoice-Large-Q8). Needs >=0.45 for aarch64 + CUDA 13.
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install torchao || echo "WARN: torchao unavailable on this platform; INT8 quant disabled"
+    (pip install torchao || echo "WARN: torchao unavailable; int8_torchao disabled") && \
+    (pip install "bitsandbytes>=0.45" || echo "WARN: bitsandbytes unavailable; bnb-quantized checkpoints will not load")
 
 COPY vibevoice/ ./vibevoice/
 COPY demo/ ./demo/
-RUN pip install -e . --no-deps && \
+# Install vibevoice + its deps. `torch` in pyproject.toml has no version pin,
+# so pip will accept the NGC-provided torch 2.9 and won't reinstall it.
+# transformers/accelerate/diffusers etc. are NOT in the NGC image and must be
+# installed here.
+RUN pip install -e . && \
     pip install -r requirements-api.txt
 
 COPY api/ ./api/
