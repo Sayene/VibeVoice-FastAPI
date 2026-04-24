@@ -49,22 +49,44 @@ class VoiceManager:
             "shimmer": "en-Alice_woman"
         }
     
+    AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+
     def load_voice_presets(self):
-        """Scan voices directory and load available presets."""
+        """Recursively scan voices directory and load available presets.
+
+        Subdirectory names are treated as language codes (e.g. ``en/``, ``pl/``).
+        Filenames may also encode language as a trailing ``_<code>`` segment
+        (e.g. ``woman_1_en.mp3``). Both are fed to `_guess_language`.
+
+        Preset name defaults to the filename stem. If two files in different
+        folders share the same stem, the second one is registered under a
+        folder-qualified name (e.g. ``pl/woman_1``) to avoid clobbering.
+        """
         if not self.voices_dir.exists():
             print(f"Warning: Voices directory not found at {self.voices_dir}")
             return
-        
-        # Supported audio extensions
-        audio_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
-        
-        # Scan directory for audio files
-        for file_path in self.voices_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
-                # Use filename without extension as preset name
-                preset_name = file_path.stem
-                self.voice_presets[preset_name] = str(file_path)
-        
+
+        for file_path in sorted(self.voices_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in self.AUDIO_EXTENSIONS:
+                continue
+            # Skip hidden files (e.g. macOS .DS_Store siblings, ._resource forks)
+            if any(part.startswith('.') for part in file_path.relative_to(self.voices_dir).parts):
+                continue
+
+            stem = file_path.stem
+            if stem in self.voice_presets:
+                # Collision: qualify with parent folder relative to voices_dir.
+                rel_parent = file_path.relative_to(self.voices_dir).parent
+                qualified = f"{rel_parent.as_posix()}/{stem}" if rel_parent != Path('.') else stem
+                if qualified in self.voice_presets:
+                    print(f"Warning: duplicate voice preset '{qualified}', skipping {file_path}")
+                    continue
+                self.voice_presets[qualified] = str(file_path)
+            else:
+                self.voice_presets[stem] = str(file_path)
+
         print(f"Loaded {len(self.voice_presets)} voice presets from {self.voices_dir}")
         if self.voice_presets:
             print(f"Available voices: {', '.join(sorted(self.voice_presets.keys()))}")
@@ -184,34 +206,75 @@ class VoiceManager:
                 })
         return voices
     
+    # ISO 639-1 codes → display names. Extend as needed.
+    _LANG_CODES = {
+        "en": "English", "zh": "Chinese", "pl": "Polish", "de": "German",
+        "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+        "ru": "Russian", "ja": "Japanese", "ko": "Korean", "nl": "Dutch",
+        "cs": "Czech", "uk": "Ukrainian", "tr": "Turkish", "ar": "Arabic",
+        "hi": "Hindi", "in": "Indian English",
+    }
+
     def _guess_language(self, voice_name: str) -> str:
-        """Guess language from voice name prefix."""
-        if voice_name.startswith("en-"):
-            return "English"
-        elif voice_name.startswith("zh-"):
-            return "Chinese"
-        elif voice_name.startswith("in-"):
-            return "Indian English"
+        """Guess language from folder prefix, filename suffix, or name prefix.
+
+        Precedence (strongest → weakest):
+          1. Parent folder name (e.g. ``en/woman_1.mp3`` → en)
+          2. Trailing ``_<code>`` segment in the stem (e.g. ``woman_1_en``)
+          3. Legacy ``<code>-`` prefix (e.g. ``en-Alice_woman``)
+        """
+        # Resolve path-qualified names back to the actual on-disk path.
+        path_str = self.voice_presets.get(voice_name)
+
+        if path_str:
+            try:
+                rel = Path(path_str).resolve().relative_to(self.voices_dir.resolve())
+                parts = rel.parts
+                if len(parts) > 1:
+                    first = parts[0].lower()
+                    if first in self._LANG_CODES:
+                        return self._LANG_CODES[first]
+                stem = rel.stem
+            except ValueError:
+                stem = Path(path_str).stem
         else:
-            return "Unknown"
+            stem = voice_name.rsplit('/', 1)[-1]
+
+        # Trailing _<code>
+        if '_' in stem:
+            tail = stem.rsplit('_', 1)[-1].lower()
+            if tail in self._LANG_CODES:
+                return self._LANG_CODES[tail]
+
+        # Legacy <code>- prefix
+        if '-' in stem:
+            head = stem.split('-', 1)[0].lower()
+            if head in self._LANG_CODES:
+                return self._LANG_CODES[head]
+
+        return "Unknown"
     
     def add_voice_from_bytes(
         self,
         name: str,
         data: bytes,
         suffix: str,
+        language: Optional[str] = None,
     ) -> Dict[str, str]:
         """Persist an uploaded voice sample to the voices directory and register it.
 
+        If ``language`` is provided (e.g. ``"en"``), the file is stored under
+        ``<voices_dir>/<language>/<name><suffix>`` — matching the convention
+        used when presets are organized by language subfolder.
+
         Raises ValueError on invalid name/suffix or unreadable audio.
         """
-        audio_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
         suffix = suffix.lower()
         if not suffix.startswith('.'):
             suffix = '.' + suffix
-        if suffix not in audio_extensions:
+        if suffix not in self.AUDIO_EXTENSIONS:
             raise ValueError(
-                f"Unsupported audio extension '{suffix}'. Allowed: {sorted(audio_extensions)}"
+                f"Unsupported audio extension '{suffix}'. Allowed: {sorted(self.AUDIO_EXTENSIONS)}"
             )
 
         # Sanitize: disallow path separators and hidden files; stem only.
@@ -219,8 +282,15 @@ class VoiceManager:
         if not stem or stem.startswith('.') or '/' in name or '\\' in name:
             raise ValueError(f"Invalid voice name: {name!r}")
 
-        self.voices_dir.mkdir(parents=True, exist_ok=True)
-        target = self.voices_dir / f"{stem}{suffix}"
+        target_dir = self.voices_dir
+        if language:
+            lang = language.lower().strip()
+            if '/' in lang or '\\' in lang or lang.startswith('.') or not lang:
+                raise ValueError(f"Invalid language: {language!r}")
+            target_dir = self.voices_dir / lang
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / f"{stem}{suffix}"
 
         # Write then validate by attempting to load it.
         target.write_bytes(data)

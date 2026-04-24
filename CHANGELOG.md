@@ -4,6 +4,23 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-04-24
+
+### Added
+
+- **Recursive voices directory with language subfolders**
+  - `VoiceManager` now walks the voices directory recursively (`rglob`), so
+    presets can be organized by language (e.g. `voices/en/woman_1_en.mp3`,
+    `voices/pl/man_2_pl.wav`).
+  - Language detection precedence: parent folder code (`en/`, `pl/`) →
+    trailing `_<code>` stem suffix (`woman_1_en`) → legacy `<code>-` prefix
+    (`en-Alice_woman`). Extensible `_LANG_CODES` map covers common ISO 639-1
+    codes.
+  - Stem collisions across subfolders fall back to folder-qualified names
+    (e.g. `pl/woman_1`) so nothing is silently overwritten.
+  - `POST /v1/vibevoice/voices` accepts an optional `language` form field;
+    when provided, the upload is stored under `<voices_dir>/<language>/`.
+
 ## [0.2.0] — 2026-04-24
 
 First release of the [Sayene/VibeVoice-FastAPI](https://github.com/Sayene/VibeVoice-FastAPI)

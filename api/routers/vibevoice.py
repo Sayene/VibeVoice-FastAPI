@@ -222,9 +222,17 @@ async def list_voices(voices: VoiceManager = Depends(get_voice_manager)):
 async def upload_voice(
     file: UploadFile = File(..., description="Audio file (wav/mp3/flac/ogg/m4a/aac)"),
     name: str | None = Form(None, description="Voice preset name (defaults to uploaded filename stem)"),
+    language: str | None = Form(
+        None,
+        description="Optional language code (e.g. 'en', 'pl'). If set, the file is stored under <voices_dir>/<language>/.",
+    ),
     voices: VoiceManager = Depends(get_voice_manager),
 ):
-    """Upload a new voice preset. Persists to the voices directory."""
+    """Upload a new voice preset. Persists to the voices directory.
+
+    When ``language`` is provided, the file lands in a language subfolder so
+    it follows the same organization as on-disk presets.
+    """
     filename = file.filename or ""
     suffix = Path(filename).suffix or ""
     preset_name = name or Path(filename).stem
@@ -242,7 +250,7 @@ async def upload_voice(
         raise HTTPException(status_code=400, detail="Empty upload")
 
     try:
-        info = voices.add_voice_from_bytes(preset_name, data, suffix)
+        info = voices.add_voice_from_bytes(preset_name, data, suffix, language=language)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -127,6 +127,18 @@ curl http://localhost:8001/v1/vibevoice/voices
 curl http://localhost:8001/v1/vibevoice/health
 ```
 
+Interactive API explorers (auto-generated from the FastAPI schema):
+
+| URL                                   | What it is                                    |
+|---------------------------------------|-----------------------------------------------|
+| `http://<spark-host>:8001/docs`       | Swagger UI — try requests straight from the browser, including multipart file upload to `POST /v1/vibevoice/voices`. |
+| `http://<spark-host>:8001/redoc`      | ReDoc — cleaner reference-style documentation. |
+| `http://<spark-host>:8001/openapi.json` | Raw OpenAPI 3.1 schema for client codegen.   |
+
+If port 8001 isn't reachable from your laptop, open an SSH tunnel:
+`ssh -L 8001:localhost:8001 user@spark-host` then visit
+`http://localhost:8001/docs`.
+
 Generate test audio:
 
 ```bash
