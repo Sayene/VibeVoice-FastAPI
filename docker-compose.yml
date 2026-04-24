@@ -44,7 +44,8 @@ services:
     # Volume mounts
     volumes:
       # Mount voices directory
-      - ${VOICES_DIR:-./demo/voices}:/app/voices:ro
+      # RW so /v1/vibevoice/voices upload/delete endpoints can persist changes.
+      - ${VOICES_DIR:-./demo/voices}:/app/voices:rw
       # Mount HuggingFace cache (optional, for faster model loading)
       - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface:rw
       # Mount models directory (optional)

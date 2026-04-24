@@ -3,7 +3,8 @@
 import base64
 import logging
 import time
-from fastapi import APIRouter, HTTPException, Depends
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import Response
 
 from api.models import (
@@ -215,6 +216,61 @@ async def list_voices(voices: VoiceManager = Depends(get_voice_manager)):
         return VoiceListResponse(voices=available_voices)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/voices", status_code=201)
+async def upload_voice(
+    file: UploadFile = File(..., description="Audio file (wav/mp3/flac/ogg/m4a/aac)"),
+    name: str | None = Form(None, description="Voice preset name (defaults to uploaded filename stem)"),
+    voices: VoiceManager = Depends(get_voice_manager),
+):
+    """Upload a new voice preset. Persists to the voices directory."""
+    filename = file.filename or ""
+    suffix = Path(filename).suffix or ""
+    preset_name = name or Path(filename).stem
+    if not preset_name:
+        raise HTTPException(status_code=400, detail="Could not determine voice name")
+
+    if preset_name in voices.voice_presets:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Voice '{preset_name}' already exists. Delete it first or choose a different name.",
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty upload")
+
+    try:
+        info = voices.add_voice_from_bytes(preset_name, data, suffix)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info(f"Uploaded voice preset: {info['name']} -> {info['path']}")
+    return info
+
+
+@router.delete("/voices/{voice_name}", status_code=204)
+async def delete_voice(
+    voice_name: str,
+    voices: VoiceManager = Depends(get_voice_manager),
+):
+    """Delete a voice preset by name."""
+    try:
+        removed = voices.delete_voice(voice_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Voice '{voice_name}' not found")
+    logger.info(f"Deleted voice preset: {voice_name}")
+    return Response(status_code=204)
+
+
+@router.post("/voices/reload")
+async def reload_voices(voices: VoiceManager = Depends(get_voice_manager)):
+    """Rescan the voices directory from disk (useful if files were added externally)."""
+    voices.reload()
+    return {"count": len(voices.voice_presets), "voices": sorted(voices.voice_presets.keys())}
 
 
 @router.get("/health", response_model=HealthResponse)

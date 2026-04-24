@@ -1,0 +1,56 @@
+# Dockerfile for NVIDIA DGX Spark (ARM64 / Grace-Blackwell)
+#
+# Uses the NGC PyTorch container which ships multi-arch (linux/amd64 + linux/arm64)
+# images with PyTorch, CUDA, cuDNN and flash-attention prebuilt for Blackwell.
+# This avoids the x86_64-only flash-attn wheel and ARM wheel-availability issues
+# of the plain `nvidia/cuda` base.
+#
+# Base: nvcr.io/nvidia/pytorch:25.10-py3 — CUDA 13, PyTorch with GB10/Blackwell
+# (SM 10.0/12.0) kernels. Driver 580+ required on the host (check nvidia-smi).
+# If you're on an older Spark image with driver <580, pin 25.03-py3 (CUDA 12.8)
+# instead; it still runs on driver 580 via CUDA forward-compat.
+FROM nvcr.io/nvidia/pytorch:25.10-py3
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System deps for audio I/O
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg \
+      libsndfile1 \
+      curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# NGC image already provides torch/torchvision/torchaudio/flash-attn built for
+# aarch64 + Blackwell, so do NOT reinstall them here (doing so would pull x86_64
+# wheels or rebuild from source for hours).
+#
+# Install only the app-specific Python deps.
+COPY pyproject.toml README.md ./
+COPY requirements-api.txt ./
+
+# torchao provides INT8 quantization. On aarch64 there is no prebuilt wheel for
+# every torch version, so fall back gracefully; the app works without it.
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install torchao || echo "WARN: torchao unavailable on this platform; INT8 quant disabled"
+
+COPY vibevoice/ ./vibevoice/
+COPY demo/ ./demo/
+RUN pip install -e . --no-deps && \
+    pip install -r requirements-api.txt
+
+COPY api/ ./api/
+COPY start.sh ./
+
+RUN mkdir -p /app/voices /app/models
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${API_PORT:-8001}"]

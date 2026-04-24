@@ -195,6 +195,80 @@ class VoiceManager:
         else:
             return "Unknown"
     
+    def add_voice_from_bytes(
+        self,
+        name: str,
+        data: bytes,
+        suffix: str,
+    ) -> Dict[str, str]:
+        """Persist an uploaded voice sample to the voices directory and register it.
+
+        Raises ValueError on invalid name/suffix or unreadable audio.
+        """
+        audio_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+        suffix = suffix.lower()
+        if not suffix.startswith('.'):
+            suffix = '.' + suffix
+        if suffix not in audio_extensions:
+            raise ValueError(
+                f"Unsupported audio extension '{suffix}'. Allowed: {sorted(audio_extensions)}"
+            )
+
+        # Sanitize: disallow path separators and hidden files; stem only.
+        stem = Path(name).stem
+        if not stem or stem.startswith('.') or '/' in name or '\\' in name:
+            raise ValueError(f"Invalid voice name: {name!r}")
+
+        self.voices_dir.mkdir(parents=True, exist_ok=True)
+        target = self.voices_dir / f"{stem}{suffix}"
+
+        # Write then validate by attempting to load it.
+        target.write_bytes(data)
+        try:
+            self.voice_presets[stem] = str(target)
+            audio = self.load_voice_audio(stem)
+            if audio is None:
+                raise ValueError("Uploaded file could not be decoded as audio")
+        except Exception:
+            # Roll back on failure.
+            self.voice_presets.pop(stem, None)
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            raise
+
+        return {
+            "name": stem,
+            "path": str(target),
+            "language": self._guess_language(stem),
+        }
+
+    def delete_voice(self, name: str) -> bool:
+        """Delete a voice preset from disk and unregister it. Returns True if removed."""
+        path = self.voice_presets.get(name)
+        if not path:
+            return False
+
+        # Safety check: must be inside voices_dir.
+        resolved = Path(path).resolve()
+        try:
+            resolved.relative_to(self.voices_dir.resolve())
+        except ValueError:
+            raise ValueError(f"Refusing to delete voice outside voices dir: {path}")
+
+        try:
+            resolved.unlink()
+        except FileNotFoundError:
+            pass
+        self.voice_presets.pop(name, None)
+        return True
+
+    def reload(self) -> None:
+        """Rescan the voices directory."""
+        self.voice_presets.clear()
+        self.load_voice_presets()
+
     def get_default_voice(self) -> Optional[str]:
         """Get a default voice preset name."""
         # Prefer English voices

@@ -1,0 +1,61 @@
+# docker-compose for NVIDIA DGX Spark (ARM64 / Grace-Blackwell)
+#
+# Differences vs. docker-compose.yml:
+#   - Uses Dockerfile.spark (NGC PyTorch base with aarch64 + Blackwell support)
+#   - Platform pinned to linux/arm64
+#   - Reserves all GPUs by default (Spark has a single Blackwell GPU)
+#   - Voices volume mounted read-write so the /v1/voices upload/delete endpoints
+#     can persist changes back to the host
+services:
+  vibevoice-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    image: vibevoice-api:spark
+    container_name: vibevoice-api
+    platform: linux/arm64
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Spark's unified memory means the container can use large amounts of RAM;
+    # give it enough shared memory for PyTorch dataloaders.
+    shm_size: "16gb"
+
+    ports:
+      - "${API_PORT:-8001}:8001"
+
+    env_file:
+      - .env
+
+    environment:
+      - VOICES_DIR=/app/voices
+      # Blackwell needs bfloat16; float16 is slower and has worse numerics here.
+      - VIBEVOICE_DTYPE=${VIBEVOICE_DTYPE:-bfloat16}
+      - VIBEVOICE_ATTN_IMPLEMENTATION=${VIBEVOICE_ATTN_IMPLEMENTATION:-flash_attention_2}
+
+    volumes:
+      # Voices are RW so upload/delete endpoints work.
+      - ${VOICES_DIR:-./demo/voices}:/app/voices:rw
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface:rw
+      - ${MODELS_DIR:-./models}:/app/models:rw
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
