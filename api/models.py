@@ -34,7 +34,11 @@ class OpenAITTSRequest(BaseModel):
         le=4.0,
         description="Speed of generated audio (0.25 to 4.0)"
     )
-    
+    language: Optional[str] = Field(
+        default=None,
+        description="ISO 639-1 language code (e.g. 'en', 'pl', 'de'). When set, the voice is resolved to a preset stored under <voices_dir>/<language>/."
+    )
+
     # Note: Voice validation removed to allow any VibeVoice preset name
     # Validation happens in the endpoint with proper error messages
 

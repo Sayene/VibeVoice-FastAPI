@@ -48,13 +48,40 @@ async def create_speech(
     This endpoint mimics the OpenAI TTS API for compatibility with existing clients.
     """
     try:
-        # Try loading as OpenAI voice first, then as direct VibeVoice preset
-        voice_audio = voices.load_voice_audio(request.voice, is_openai_voice=True)
-        
-        # If not found as OpenAI voice, try as direct VibeVoice preset name
+        voice_audio = None
+        resolved_voice = request.voice
+        is_openai_voice = request.voice in voices.OPENAI_VOICE_MAPPING
+
+        # If a language is supplied, prefer a preset stored under <voices_dir>/<language>/
+        if request.language:
+            language_key = voices.resolve_voice_for_language(
+                request.voice,
+                request.language,
+                is_openai_voice=is_openai_voice,
+            )
+            if language_key:
+                resolved_voice = language_key
+                voice_audio = voices.load_voice_audio(language_key, is_openai_voice=False)
+            else:
+                available_in_lang = sorted(
+                    k for k, p in voices.voice_presets.items()
+                    if f"/{request.language.lower().strip()}/" in f"/{p.lower()}/"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No voice matching '{request.voice}' found for language "
+                        f"'{request.language}'. Presets available in that language: "
+                        f"{', '.join(available_in_lang) if available_in_lang else '(none)'}"
+                    ),
+                )
+
+        # Fallback: try as OpenAI voice, then as direct VibeVoice preset name
+        if voice_audio is None:
+            voice_audio = voices.load_voice_audio(request.voice, is_openai_voice=True)
         if voice_audio is None:
             voice_audio = voices.load_voice_audio(request.voice, is_openai_voice=False)
-        
+
         if voice_audio is None:
             available_openai = ', '.join(voices.OPENAI_VOICE_MAPPING.keys())
             available_presets = ', '.join(sorted(voices.voice_presets.keys()))
@@ -83,7 +110,8 @@ async def create_speech(
         # Log generation details at INFO level
         text_preview = request.input[:100] + "..." if len(request.input) > 100 else request.input
         logger.info(
-            f"Generated speech - Text: {text_preview} | Voice: {request.voice} | "
+            f"Generated speech - Text: {text_preview} | Voice: {request.voice} "
+            f"(resolved: {resolved_voice}) | Language: {request.language or 'auto'} | "
             f"Model: {request.model} ({settings.vibevoice_model_path}) | "
             f"CFG: {settings.default_cfg_scale} | Audio Duration: {audio_duration:.2f}s | Generation Time: {generation_time:.2f}s"
         )

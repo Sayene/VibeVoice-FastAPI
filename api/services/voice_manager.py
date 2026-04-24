@@ -195,6 +195,51 @@ class VoiceManager:
             print(f"Error loading voice {voice_name} from {voice_path}: {e}")
             return None
     
+    def resolve_voice_for_language(
+        self,
+        voice_name: str,
+        language: str,
+        is_openai_voice: bool = False,
+    ) -> Optional[str]:
+        """Find a preset key for ``voice_name`` that lives under ``<voices_dir>/<language>/``.
+
+        Returns the preset key (usable with :meth:`load_voice_audio`) or ``None`` if no
+        match exists. Match order:
+
+        1. Exact stem match inside the language folder (e.g. ``pl/Alice_woman``).
+        2. Any preset under that folder whose stem shares a common base with the
+           OpenAI-mapped name (e.g. ``alloy`` → mapping ``en-Alice_woman`` → strip
+           ``en-`` → look for ``Alice_woman`` in ``pl/``).
+        """
+        lang = (language or "").lower().strip()
+        if not lang:
+            return None
+
+        candidates = [voice_name]
+        if is_openai_voice:
+            mapped = self.OPENAI_VOICE_MAPPING.get(voice_name)
+            if mapped:
+                candidates.append(mapped)
+                # Strip legacy ``<code>-`` language prefix (e.g. ``en-Alice_woman`` → ``Alice_woman``).
+                if "-" in mapped:
+                    head, rest = mapped.split("-", 1)
+                    if head.lower() in self._LANG_CODES:
+                        candidates.append(rest)
+
+        voices_root = self.voices_dir.resolve()
+        for key, path in self.voice_presets.items():
+            try:
+                rel = Path(path).resolve().relative_to(voices_root)
+            except ValueError:
+                continue
+            parts = rel.parts
+            if len(parts) < 2 or parts[0].lower() != lang:
+                continue
+            if rel.stem in candidates:
+                return key
+
+        return None
+
     def list_available_voices(self) -> List[Dict[str, str]]:
         """
         Get list of available voice presets.

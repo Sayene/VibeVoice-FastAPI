@@ -4,6 +4,23 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.5] — 2026-04-25
+
+### Added
+
+- **`language` parameter on `POST /v1/audio/speech`** — the OpenAI-compatible
+  endpoint now accepts an optional ISO 639-1 code (e.g. `"pl"`, `"de"`). When
+  supplied, the voice is resolved to a preset stored under
+  `<voices_dir>/<language>/`, so the same OpenAI voice name (`alloy`, `echo`, …)
+  or shared preset stem can produce output in the requested language's accent.
+  - New `VoiceManager.resolve_voice_for_language()` handles the lookup,
+    including stripping legacy `<code>-` prefixes from the default OpenAI voice
+    mapping (e.g. `en-Alice_woman` → matches `pl/Alice_woman`).
+  - Requests with a `language` that has no matching preset return HTTP 400 and
+    list the presets available in that language.
+  - Without `language`, behavior is unchanged (OpenAI mapping, then direct
+    preset name).
+
 ## [0.3.4] — 2026-04-24
 
 ### Fixed
