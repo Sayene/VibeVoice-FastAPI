@@ -14,6 +14,7 @@ from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 from vibevoice.modular.streamer import AudioStreamer
 
 from api.config import Settings
+from api.services.chunking import split_script_into_chunks
 
 
 class TTSService:
@@ -243,11 +244,16 @@ class TTSService:
         cfg_scale: float = 1.3,
         inference_steps: Optional[int] = None,
         seed: Optional[int] = None,
-        stream: bool = False
+        stream: bool = False,
+        do_sample: Optional[bool] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_words_per_chunk: int = 0,
+        chunk_silence_ms: int = 0,
     ) -> Union[np.ndarray, Iterator[np.ndarray]]:
         """
         Generate speech from text.
-        
+
         Args:
             text: Input text (formatted with Speaker labels)
             voice_samples: List of voice sample arrays
@@ -255,22 +261,58 @@ class TTSService:
             inference_steps: Number of diffusion steps (None = use default)
             seed: Random seed for reproducibility
             stream: Whether to return streaming iterator
-            
+            do_sample: Use sampling (True) vs greedy (False). Auto-True if
+                temperature/top_p provided and this is None.
+            temperature: Sampling temperature (only used when do_sample=True)
+            top_p: Nucleus sampling top_p (only used when do_sample=True)
+            max_words_per_chunk: If > 0, split long scripts into chunks of at
+                most this many words and synthesize sequentially. 0 disables.
+            chunk_silence_ms: Silence (ms) inserted between concatenated chunks
+                in non-streaming mode. 0 disables.
+
         Returns:
             Generated audio array or iterator of audio chunks
         """
         if not self._model_loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
-        
-        # Set seed if provided
+
         if seed is not None:
             set_seed(seed)
-        
-        # Set inference steps if provided
+
         if inference_steps is not None:
             self.model.set_ddpm_inference_steps(num_steps=inference_steps)
-        
-        # Process inputs
+
+        if do_sample is None:
+            do_sample = temperature is not None or top_p is not None
+
+        chunks = split_script_into_chunks(text, max_words_per_chunk)
+        if len(chunks) > 1:
+            logger.info(f"Split script into {len(chunks)} chunks (max {max_words_per_chunk} words/chunk)")
+
+        if stream:
+            return self._generate_streaming_chunks(
+                chunks, voice_samples, cfg_scale, do_sample, temperature, top_p
+            )
+
+        audio_pieces: List[np.ndarray] = []
+        silence = (
+            np.zeros(int(24000 * chunk_silence_ms / 1000.0), dtype=np.float32)
+            if chunk_silence_ms > 0 else None
+        )
+        for i, chunk_text in enumerate(chunks):
+            audio_pieces.append(
+                self._generate_full(chunk_text, voice_samples, cfg_scale, do_sample, temperature, top_p)
+            )
+            if silence is not None and i < len(chunks) - 1:
+                audio_pieces.append(silence)
+
+        if len(audio_pieces) == 1:
+            return audio_pieces[0]
+        # Ensure consistent shape (1D) for concatenation
+        flat = [a.reshape(-1) if a.ndim > 1 else a for a in audio_pieces]
+        return np.concatenate(flat)
+
+    def _build_inputs(self, text: str, voice_samples: List[np.ndarray]) -> dict:
         inputs = self.processor(
             text=[text],
             voice_samples=[voice_samples],
@@ -278,47 +320,79 @@ class TTSService:
             return_tensors="pt",
             return_attention_mask=True,
         )
-        
-        # Move to device
         target_device = self.device if self.device in ("cuda", "mps") else "cpu"
         for k, v in inputs.items():
             if torch.is_tensor(v):
                 inputs[k] = v.to(target_device)
-        
-        if stream:
-            # Return streaming iterator
-            return self._generate_streaming(inputs, cfg_scale)
-        else:
-            # Generate all at once
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=None,
-                    cfg_scale=cfg_scale,
-                    tokenizer=self.processor.tokenizer,
-                    generation_config={'do_sample': False},
-                    return_speech=True,
-                    verbose=False,
-                    refresh_negative=True,
-                    show_progress_bar=False
-                )
-            
-            # Get audio output
-            if outputs.speech_outputs and outputs.speech_outputs[0] is not None:
-                audio = outputs.speech_outputs[0]
-                if torch.is_tensor(audio):
-                    # Convert bfloat16 to float32 before converting to numpy
-                    if audio.dtype == torch.bfloat16:
-                        audio = audio.float()
-                    audio = audio.cpu().numpy()
-                return audio
-            else:
-                raise RuntimeError("No audio generated")
-    
+        return inputs
+
+    def _build_generation_config(
+        self,
+        do_sample: bool,
+        temperature: Optional[float],
+        top_p: Optional[float],
+    ) -> dict:
+        cfg: dict = {"do_sample": bool(do_sample)}
+        if do_sample:
+            if temperature is not None:
+                cfg["temperature"] = float(temperature)
+            if top_p is not None:
+                cfg["top_p"] = float(top_p)
+        return cfg
+
+    def _generate_full(
+        self,
+        text: str,
+        voice_samples: List[np.ndarray],
+        cfg_scale: float,
+        do_sample: bool,
+        temperature: Optional[float],
+        top_p: Optional[float],
+    ) -> np.ndarray:
+        inputs = self._build_inputs(text, voice_samples)
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=None,
+                cfg_scale=cfg_scale,
+                tokenizer=self.processor.tokenizer,
+                generation_config=self._build_generation_config(do_sample, temperature, top_p),
+                return_speech=True,
+                verbose=False,
+                refresh_negative=True,
+                show_progress_bar=False,
+            )
+        if not outputs.speech_outputs or outputs.speech_outputs[0] is None:
+            raise RuntimeError("No audio generated")
+        audio = outputs.speech_outputs[0]
+        if torch.is_tensor(audio):
+            if audio.dtype == torch.bfloat16:
+                audio = audio.float()
+            audio = audio.cpu().numpy()
+        return audio
+
+    def _generate_streaming_chunks(
+        self,
+        chunks: List[str],
+        voice_samples: List[np.ndarray],
+        cfg_scale: float,
+        do_sample: bool,
+        temperature: Optional[float],
+        top_p: Optional[float],
+    ) -> Iterator[np.ndarray]:
+        for chunk_text in chunks:
+            inputs = self._build_inputs(chunk_text, voice_samples)
+            yield from self._generate_streaming(
+                inputs, cfg_scale, do_sample, temperature, top_p
+            )
+
     def _generate_streaming(
         self,
         inputs: dict,
-        cfg_scale: float
+        cfg_scale: float,
+        do_sample: bool = False,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
     ) -> Iterator[np.ndarray]:
         """
         Generate speech with streaming.
@@ -340,6 +414,8 @@ class TTSService:
         # Start generation in background
         import threading
         
+        gen_config = self._build_generation_config(do_sample, temperature, top_p)
+
         def generate():
             with torch.no_grad():
                 self.model.generate(
@@ -347,7 +423,7 @@ class TTSService:
                     max_new_tokens=None,
                     cfg_scale=cfg_scale,
                     tokenizer=self.processor.tokenizer,
-                    generation_config={'do_sample': False},
+                    generation_config=gen_config,
                     audio_streamer=audio_streamer,
                     return_speech=True,
                     verbose=False,

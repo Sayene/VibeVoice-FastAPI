@@ -4,6 +4,48 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-04-25
+
+### Added
+
+- **Sentence-aware chunking for long generations** — long scripts are now split
+  at sentence boundaries and synthesized sequentially, avoiding the quality
+  degradation VibeVoice exhibits on very long single-shot generations. New
+  helper `api/services/chunking.py` ports the strategy from VibeVoice-ComfyUI:
+  - Splits on sentence terminators (`.!?`), falls back to period-based
+    splitting, and sub-splits oversized sentences at `,`/`;`.
+  - Multi-speaker scripts are chunked **per-turn**: each chunk re-emits its
+    `Speaker N:` label and never crosses speaker boundaries.
+  - Chunks are concatenated in non-streaming mode (with optional silence pad);
+    in streaming mode each chunk's audio is forwarded sequentially over the
+    same SSE response.
+- **New generation parameters on `POST /v1/vibevoice/generate`**:
+  - `do_sample` (bool) — switch between greedy and sampling decoding.
+    Auto-enabled when `temperature` or `top_p` is provided.
+  - `temperature` (0.0–5.0) — sampling temperature.
+  - `top_p` (0.0–1.0) — nucleus sampling.
+  - `max_words_per_chunk` (0–2000) — per-request override; `0` disables
+    chunking. Defaults to server `default_max_words_per_chunk`.
+  - `chunk_silence_ms` (0–5000) — silence inserted between concatenated chunks
+    in non-streaming mode.
+- **New settings / env vars**:
+  - `DEFAULT_MAX_WORDS_PER_CHUNK` (default `250`) — server-wide chunk size.
+  - `DEFAULT_CHUNK_SILENCE_MS` (default `0`) — server-wide chunk gap.
+- The OpenAI-compatible `POST /v1/audio/speech` endpoint also benefits: it
+  uses the server defaults for chunking and sampling, so long inputs work
+  without client changes.
+
+### Changed
+
+- `TTSService.generate_speech()` signature extended with `do_sample`,
+  `temperature`, `top_p`, `max_words_per_chunk`, `chunk_silence_ms`. Existing
+  callers continue to work (all new params are optional). Internals refactored
+  into `_build_inputs`, `_build_generation_config`, `_generate_full`, and
+  `_generate_streaming_chunks` to share code between single-shot and chunked
+  paths.
+- Generation logs now include sampling mode, temperature, top_p, and the
+  active `max_words_per_chunk`.
+
 ## [0.3.5] — 2026-04-25
 
 ### Added

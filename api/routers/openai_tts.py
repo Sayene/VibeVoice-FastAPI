@@ -100,7 +100,12 @@ async def create_speech(
             text=formatted_script,
             voice_samples=[voice_audio],
             cfg_scale=settings.default_cfg_scale,
-            stream=False  # For OpenAI compatibility, generate all at once
+            stream=False,  # For OpenAI compatibility, generate all at once
+            do_sample=settings.default_do_sample,
+            temperature=settings.default_temperature if settings.default_do_sample else None,
+            top_p=settings.default_top_p if settings.default_do_sample else None,
+            max_words_per_chunk=settings.default_max_words_per_chunk,
+            chunk_silence_ms=settings.default_chunk_silence_ms,
         )
         generation_time = time.time() - start_time
         

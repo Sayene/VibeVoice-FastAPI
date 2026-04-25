@@ -111,7 +111,39 @@ class VibeVoiceGenerateRequest(BaseModel):
         default=None,
         description="Random seed for reproducibility"
     )
-    
+    do_sample: Optional[bool] = Field(
+        default=None,
+        description="Use sampling instead of greedy decoding. Auto-enabled if temperature/top_p set."
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=5.0,
+        description="Sampling temperature (only used when do_sample=True)."
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description="Nucleus sampling top_p (only used when do_sample=True)."
+    )
+    max_words_per_chunk: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=2000,
+        description=(
+            "Max words per generated chunk. Long scripts are split at sentence "
+            "boundaries and synthesized sequentially. 0 disables chunking. "
+            "Defaults to server's default_max_words_per_chunk."
+        ),
+    )
+    chunk_silence_ms: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=5000,
+        description="Silence (ms) inserted between chunks (non-streaming).",
+    )
+
     @validator("speakers")
     def validate_speaker_ids(cls, v):
         """Ensure speaker IDs are sequential starting from 0."""

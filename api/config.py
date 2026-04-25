@@ -125,6 +125,18 @@ class Settings(BaseSettings):
         default=1.0,
         description="Repetition penalty (1.0 = no penalty)"
     )
+    default_max_words_per_chunk: int = Field(
+        default=250,
+        description=(
+            "Default max words per generated chunk. Long scripts are split at "
+            "sentence boundaries and synthesized sequentially to preserve quality. "
+            "Set 0 to disable chunking."
+        ),
+    )
+    default_chunk_silence_ms: int = Field(
+        default=0,
+        description="Silence (ms) inserted between concatenated chunks (non-streaming).",
+    )
     
     # Logging
     log_level: str = Field(

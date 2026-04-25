@@ -125,8 +125,13 @@ async def generate_speech(
                 voice_list.append(f"speaker{speaker_config.speaker_id}=base64_audio")
         voices_str = ", ".join(voice_list)
         
-        # Get actual inference_steps value (request value or default from settings)
+        # Resolve actual values with server defaults
         actual_inference_steps = request.inference_steps if request.inference_steps is not None else settings.vibevoice_inference_steps
+        max_words = request.max_words_per_chunk if request.max_words_per_chunk is not None else settings.default_max_words_per_chunk
+        chunk_silence_ms = request.chunk_silence_ms if request.chunk_silence_ms is not None else settings.default_chunk_silence_ms
+        do_sample = request.do_sample
+        if do_sample is None and (request.temperature is not None or request.top_p is not None):
+            do_sample = True
         
         # Generate speech
         if request.stream:
@@ -136,16 +141,22 @@ async def generate_speech(
             logger.info(
                 f"Generating speech (streaming) - Text: {text_preview} | Voices: {voices_str} | "
                 f"Model: {settings.vibevoice_model_path} | CFG: {request.cfg_scale} | "
-                f"Steps: {actual_inference_steps} | Seed: {request.seed if request.seed is not None else 'None'}"
+                f"Steps: {actual_inference_steps} | Seed: {request.seed if request.seed is not None else 'None'} | "
+                f"Sample: {bool(do_sample)} | Temp: {request.temperature} | TopP: {request.top_p} | "
+                f"MaxWords/Chunk: {max_words}"
             )
-            
+
             audio_stream = tts.generate_speech(
                 text=request.script,
                 voice_samples=voice_samples,
                 cfg_scale=request.cfg_scale,
                 inference_steps=request.inference_steps,
                 seed=request.seed,
-                stream=True
+                stream=True,
+                do_sample=do_sample,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                max_words_per_chunk=max_words,
             )
             
             # For streaming, we can't measure exact time, but log start
@@ -165,7 +176,12 @@ async def generate_speech(
                 cfg_scale=request.cfg_scale,
                 inference_steps=request.inference_steps,
                 seed=request.seed,
-                stream=False
+                stream=False,
+                do_sample=do_sample,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                max_words_per_chunk=max_words,
+                chunk_silence_ms=chunk_silence_ms,
             )
             generation_time = time.time() - start_time
             
@@ -178,6 +194,8 @@ async def generate_speech(
                 f"Generated speech - Text: {text_preview} | Voices: {voices_str} | "
                 f"Model: {settings.vibevoice_model_path} | CFG: {request.cfg_scale} | "
                 f"Steps: {actual_inference_steps} | Seed: {request.seed if request.seed is not None else 'None'} | "
+                f"Sample: {bool(do_sample)} | Temp: {request.temperature} | TopP: {request.top_p} | "
+                f"MaxWords/Chunk: {max_words} | "
                 f"Audio Duration: {audio_duration:.2f}s | Generation Time: {generation_time:.2f}s"
             )
             
