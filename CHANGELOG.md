@@ -4,6 +4,27 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] — 2026-04-26
+
+### Added
+
+- **OpenAI-compatible `POST /v1/audio/speech` parity** — the endpoint now
+  accepts the same VibeVoice extension fields as `/v1/vibevoice/generate`:
+  `cfg_scale`, `inference_steps`, `seed`, `do_sample`, `temperature`,
+  `top_p`, `max_words_per_chunk`, `chunk_silence_ms`. Stock OpenAI clients
+  that only send the standard fields are unaffected and pick up the server
+  defaults automatically.
+
+### Changed
+
+- Richer FastAPI/OpenAPI annotations across the TTS request schemas and
+  endpoints. Every field on `OpenAITTSRequest`, `VibeVoiceGenerateRequest`,
+  and `SpeakerConfig` now carries a precise description (including
+  `inference_steps` being clarified as the DDPM diffusion-step count, a.k.a.
+  `diffusion_steps` in some VibeVoice front-ends). Both `/v1/vibevoice/generate`
+  and `/v1/audio/speech` have detailed operation summaries and docstrings,
+  visible in `/docs` and the generated OpenAPI spec.
+
 ## [0.4.0] — 2026-04-25
 
 ### Added

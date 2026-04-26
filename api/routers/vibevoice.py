@@ -43,21 +43,44 @@ def get_voice_manager() -> VoiceManager:
     return voice_manager
 
 
-@router.post("/generate")
+@router.post(
+    "/generate",
+    summary="Generate multi-speaker speech",
+    response_description="Audio bytes in the requested `response_format`, or an SSE stream when `stream=true`.",
+)
 async def generate_speech(
     request: VibeVoiceGenerateRequest,
     tts: TTSService = Depends(get_tts_service),
     voices: VoiceManager = Depends(get_voice_manager)
 ):
-    """
-    Generate multi-speaker speech with VibeVoice-specific features.
-    
-    Supports:
-    - Multi-speaker dialogue (up to 4 speakers)
-    - Custom voice samples via base64 or presets
-    - CFG scale control
-    - Inference step control
-    - Real-time streaming via SSE
+    """Generate speech from a multi-speaker script using VibeVoice.
+
+    **Features**
+
+    - Up to 4 distinct speakers, each driven by an on-disk preset
+      (`voice_preset`) or an inline base64 reference clip
+      (`voice_sample_base64`).
+    - Full control over the diffusion + sampling pipeline:
+      `cfg_scale`, `inference_steps` (a.k.a. diffusion steps),
+      `do_sample`, `temperature`, `top_p`, `seed`.
+    - **Sentence-aware chunking** for long scripts via
+      `max_words_per_chunk` — chunks never cross speaker turns; each
+      chunk re-emits its `Speaker N:` label and is synthesized
+      sequentially to preserve quality. Use `chunk_silence_ms` to
+      insert silence between concatenated chunks (non-streaming only).
+    - Real-time delivery via Server-Sent Events when `stream=true`.
+
+    **Script format**
+
+    ```
+    Speaker 0: First turn of dialogue.
+    Speaker 1: Second speaker's reply.
+    Speaker 0: Back to the first speaker.
+    ```
+
+    Returns the encoded audio (`response_format`) plus
+    `X-Audio-Duration`, `X-Audio-Format`, and `X-Audio-Sample-Rate`
+    headers in non-streaming mode.
     """
     try:
         # Load voice samples for each speaker

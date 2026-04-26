@@ -36,16 +36,35 @@ def get_voice_manager() -> VoiceManager:
     return voice_manager
 
 
-@router.post("/speech")
+@router.post(
+    "/speech",
+    summary="Generate speech (OpenAI-compatible)",
+    response_description="Encoded audio bytes in the requested `response_format`.",
+)
 async def create_speech(
     request: OpenAITTSRequest,
     tts: TTSService = Depends(get_tts_service),
     voices: VoiceManager = Depends(get_voice_manager)
 ):
-    """
-    Generate speech from text using OpenAI-compatible API.
-    
-    This endpoint mimics the OpenAI TTS API for compatibility with existing clients.
+    """OpenAI-compatible Text-to-Speech endpoint, backed by VibeVoice.
+
+    Drop-in replacement for `POST /v1/audio/speech` from the OpenAI API:
+    accepts the standard `model`, `input`, `voice`, `response_format`, and
+    `speed` fields. The voice is resolved against OpenAI voice names
+    (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) **or** any
+    on-disk VibeVoice preset name.
+
+    **Extensions** (optional, ignored by stock OpenAI clients):
+
+    - `language` — ISO 639-1 code; resolves the voice under
+      `<voices_dir>/<language>/` for accent control.
+    - `cfg_scale`, `inference_steps` — diffusion controls.
+    - `do_sample`, `temperature`, `top_p`, `seed` — LLM sampling controls.
+    - `max_words_per_chunk`, `chunk_silence_ms` — sentence-aware chunking
+      for long inputs (long generations otherwise lose quality).
+
+    All extension fields fall back to server-side defaults
+    (`DEFAULT_*` env vars) when omitted.
     """
     try:
         voice_audio = None
@@ -96,16 +115,45 @@ async def create_speech(
         # Generate speech with timing
         # Note: OpenAI API doesn't support streaming in the same way, but we can use chunked transfer
         start_time = time.time()
+        # Resolve params with server defaults (request overrides win)
+        cfg_scale = request.cfg_scale if request.cfg_scale is not None else settings.default_cfg_scale
+        inference_steps = request.inference_steps  # None -> service uses model default
+        max_words = (
+            request.max_words_per_chunk if request.max_words_per_chunk is not None
+            else settings.default_max_words_per_chunk
+        )
+        chunk_silence_ms = (
+            request.chunk_silence_ms if request.chunk_silence_ms is not None
+            else settings.default_chunk_silence_ms
+        )
+        do_sample = request.do_sample
+        if do_sample is None:
+            do_sample = (
+                request.temperature is not None
+                or request.top_p is not None
+                or settings.default_do_sample
+            )
+        temperature = (
+            request.temperature if request.temperature is not None
+            else (settings.default_temperature if do_sample else None)
+        )
+        top_p = (
+            request.top_p if request.top_p is not None
+            else (settings.default_top_p if do_sample else None)
+        )
+
         audio = tts.generate_speech(
             text=formatted_script,
             voice_samples=[voice_audio],
-            cfg_scale=settings.default_cfg_scale,
+            cfg_scale=cfg_scale,
+            inference_steps=inference_steps,
+            seed=request.seed,
             stream=False,  # For OpenAI compatibility, generate all at once
-            do_sample=settings.default_do_sample,
-            temperature=settings.default_temperature if settings.default_do_sample else None,
-            top_p=settings.default_top_p if settings.default_do_sample else None,
-            max_words_per_chunk=settings.default_max_words_per_chunk,
-            chunk_silence_ms=settings.default_chunk_silence_ms,
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
+            max_words_per_chunk=max_words,
+            chunk_silence_ms=chunk_silence_ms,
         )
         generation_time = time.time() - start_time
         
@@ -118,7 +166,10 @@ async def create_speech(
             f"Generated speech - Text: {text_preview} | Voice: {request.voice} "
             f"(resolved: {resolved_voice}) | Language: {request.language or 'auto'} | "
             f"Model: {request.model} ({settings.vibevoice_model_path}) | "
-            f"CFG: {settings.default_cfg_scale} | Audio Duration: {audio_duration:.2f}s | Generation Time: {generation_time:.2f}s"
+            f"CFG: {cfg_scale} | Steps: {inference_steps if inference_steps is not None else settings.vibevoice_inference_steps} | "
+            f"Sample: {bool(do_sample)} | Temp: {temperature} | TopP: {top_p} | "
+            f"MaxWords/Chunk: {max_words} | Seed: {request.seed if request.seed is not None else 'None'} | "
+            f"Audio Duration: {audio_duration:.2f}s | Generation Time: {generation_time:.2f}s"
         )
         
         # Convert to requested format
