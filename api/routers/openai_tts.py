@@ -153,6 +153,12 @@ async def create_speech(
             else (settings.default_top_p if do_sample else None)
         )
 
+        resolved_path = voices.get_voice_path(resolved_voice, is_openai_voice=False)
+        voice_source = (
+            f"voice={request.voice} resolved={resolved_voice} "
+            f"language={request.language or 'auto'} path={resolved_path}"
+        )
+
         audio = tts.generate_speech(
             text=formatted_script,
             voice_samples=[voice_audio],
@@ -165,6 +171,7 @@ async def create_speech(
             top_p=top_p,
             max_words_per_chunk=max_words,
             chunk_silence_ms=chunk_silence_ms,
+            voice_sources=[voice_source],
         )
         generation_time = time.time() - start_time
         

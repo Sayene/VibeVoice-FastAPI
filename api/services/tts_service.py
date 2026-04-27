@@ -250,6 +250,7 @@ class TTSService:
         top_p: Optional[float] = None,
         max_words_per_chunk: int = 0,
         chunk_silence_ms: int = 0,
+        voice_sources: Optional[List[str]] = None,
     ) -> Union[np.ndarray, Iterator[np.ndarray]]:
         """
         Generate speech from text.
@@ -269,6 +270,10 @@ class TTSService:
                 most this many words and synthesize sequentially. 0 disables.
             chunk_silence_ms: Silence (ms) inserted between concatenated chunks
                 in non-streaming mode. 0 disables.
+            voice_sources: Optional list of human-readable source identifiers
+                (preset key, file path, or "base64:N bytes") for each voice
+                sample, in the same order as `voice_samples`. Used only for
+                debug logging.
 
         Returns:
             Generated audio array or iterator of audio chunks
@@ -288,6 +293,22 @@ class TTSService:
         chunks = split_script_into_chunks(text, max_words_per_chunk)
         if len(chunks) > 1:
             logger.info(f"Split script into {len(chunks)} chunks (max {max_words_per_chunk} words/chunk)")
+
+        self._log_generation_request(
+            text=text,
+            voice_samples=voice_samples,
+            voice_sources=voice_sources,
+            cfg_scale=cfg_scale,
+            inference_steps=inference_steps,
+            seed=seed,
+            stream=stream,
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
+            max_words_per_chunk=max_words_per_chunk,
+            chunk_silence_ms=chunk_silence_ms,
+            num_chunks=len(chunks),
+        )
 
         if stream:
             return self._generate_streaming_chunks(
@@ -311,6 +332,71 @@ class TTSService:
         # Ensure consistent shape (1D) for concatenation
         flat = [a.reshape(-1) if a.ndim > 1 else a for a in audio_pieces]
         return np.concatenate(flat)
+
+    def _log_generation_request(
+        self,
+        text: str,
+        voice_samples: List[np.ndarray],
+        voice_sources: Optional[List[str]],
+        cfg_scale: float,
+        inference_steps: Optional[int],
+        seed: Optional[int],
+        stream: bool,
+        do_sample: bool,
+        temperature: Optional[float],
+        top_p: Optional[float],
+        max_words_per_chunk: int,
+        chunk_silence_ms: int,
+        num_chunks: int,
+    ) -> None:
+        """Emit a DEBUG line summarising the exact params used for generation.
+
+        Mirrors the call we will make to model.generate() and dumps voice
+        sample stats so quality issues (bleed, accent, level) can be triaged
+        from logs alone.
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        effective_steps = (
+            inference_steps if inference_steps is not None
+            else self.settings.vibevoice_inference_steps
+        )
+        sample_rate = 24000
+
+        sample_lines = []
+        for i, sample in enumerate(voice_samples):
+            src = voice_sources[i] if voice_sources and i < len(voice_sources) else "?"
+            try:
+                arr = np.asarray(sample)
+                n = int(arr.size)
+                duration_s = n / sample_rate
+                peak = float(np.max(np.abs(arr))) if n else 0.0
+                rms = float(np.sqrt(np.mean(arr.astype(np.float64) ** 2))) if n else 0.0
+                dtype = arr.dtype
+                shape = arr.shape
+            except Exception as e:
+                sample_lines.append(f"  speaker[{i}] src={src} <stat-error: {e}>")
+                continue
+            sample_lines.append(
+                f"  speaker[{i}] src={src} samples={n} duration={duration_s:.3f}s "
+                f"sr={sample_rate} peak={peak:.4f} rms={rms:.4f} dtype={dtype} shape={shape}"
+            )
+
+        text_preview = text if len(text) <= 200 else (text[:200] + "...")
+
+        logger.debug(
+            "TTS generate() params:\n"
+            f"  device={self.device} dtype={self.dtype} model={self.settings.vibevoice_model_path}\n"
+            f"  cfg_scale={cfg_scale} inference_steps={effective_steps} (request={inference_steps}) "
+            f"seed={seed} stream={stream}\n"
+            f"  do_sample={bool(do_sample)} temperature={temperature} top_p={top_p}\n"
+            f"  max_words_per_chunk={max_words_per_chunk} chunk_silence_ms={chunk_silence_ms} "
+            f"num_chunks={num_chunks}\n"
+            f"  refresh_negative=True return_speech=True verbose=False show_progress_bar=False\n"
+            f"  voice_samples ({len(voice_samples)}):\n" + "\n".join(sample_lines) + "\n"
+            f"  text_preview={text_preview!r}"
+        )
 
     def _build_inputs(self, text: str, voice_samples: List[np.ndarray]) -> dict:
         inputs = self.processor(

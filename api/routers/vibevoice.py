@@ -108,6 +108,7 @@ async def generate_speech(
     try:
         # Load voice samples for each speaker
         voice_samples = []
+        voice_sources: list[str] = []
 
         for speaker_config in sorted(request.speakers, key=lambda s: s.speaker_id):
             if speaker_config.voice_sample_base64:
@@ -134,6 +135,7 @@ async def generate_speech(
                         trim_db=settings.voice_sample_trim_db,
                     )
                     voice_samples.append(audio_data)
+                    voice_sources.append(f"base64:{len(audio_bytes)}B")
 
                 except Exception as e:
                     raise HTTPException(
@@ -152,6 +154,8 @@ async def generate_speech(
                     )
 
                 voice_samples.append(audio_data)
+                preset_path = voices.get_voice_path(speaker_config.voice_preset, is_openai_voice=False)
+                voice_sources.append(f"preset={speaker_config.voice_preset} path={preset_path}")
 
             else:
                 raise HTTPException(
@@ -195,6 +199,7 @@ async def generate_speech(
                 temperature=request.temperature,
                 top_p=request.top_p,
                 max_words_per_chunk=max_words,
+                voice_sources=voice_sources,
             )
 
             return create_streaming_response(
@@ -218,6 +223,7 @@ async def generate_speech(
                 top_p=request.top_p,
                 max_words_per_chunk=max_words,
                 chunk_silence_ms=chunk_silence_ms,
+                voice_sources=voice_sources,
             )
             generation_time = time.time() - start_time
 

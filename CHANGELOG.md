@@ -4,6 +4,27 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] — 2026-04-27
+
+### Added
+
+- **DEBUG-level generation trace** in `TTSService.generate_speech`. When
+  `LOG_LEVEL=DEBUG`, every request emits a single block listing the
+  exact `model.generate()` parameters (`cfg_scale`, effective
+  `inference_steps`, `seed`, `do_sample`, `temperature`, `top_p`,
+  `max_words_per_chunk`, `chunk_silence_ms`, `num_chunks`,
+  `refresh_negative`, `return_speech`) plus per-speaker reference-clip
+  stats (samples, duration, sample-rate, peak, RMS, dtype, shape) and a
+  text preview. Intended for diagnosing quality regressions vs other
+  VibeVoice front-ends (e.g. ComfyUI).
+- New `voice_sources: Optional[List[str]]` arg on
+  `TTSService.generate_speech`. Both routers now thread human-readable
+  source identifiers through:
+  - `/v1/vibevoice/generate` — `preset=<key> path=<file>` or
+    `base64:<N>B` per speaker.
+  - `/v1/audio/speech` — `voice=<req> resolved=<key> language=<lang>
+    path=<file>`.
+
 ## [0.5.0] — 2026-04-27
 
 ### Changed (breaking)
