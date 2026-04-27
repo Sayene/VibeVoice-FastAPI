@@ -1,4 +1,13 @@
-"""Voice preset management and OpenAI voice mapping."""
+"""Voice preset management and OpenAI voice mapping.
+
+Voice presets are organized on disk by ISO 639-1 language code:
+
+    <voices_dir>/<lang>/<name>.<ext>      e.g.  voices/pl/Alice.wav
+
+The preset key (used everywhere in the API) is ``<lang>/<name>``. Files
+sitting directly under ``<voices_dir>`` (no language folder) are still
+loaded for backward compatibility and keyed by their bare stem.
+"""
 
 import os
 import json
@@ -40,6 +49,17 @@ def prepare_voice_sample(
 class VoiceManager:
     """Manages voice presets and maps OpenAI voices to VibeVoice presets."""
 
+    # ISO 639-1 codes → display names. Extend as needed.
+    _LANG_CODES = {
+        "en": "English", "zh": "Chinese", "pl": "Polish", "de": "German",
+        "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+        "ru": "Russian", "ja": "Japanese", "ko": "Korean", "nl": "Dutch",
+        "cs": "Czech", "uk": "Ukrainian", "tr": "Turkish", "ar": "Arabic",
+        "hi": "Hindi", "in": "Indian English",
+    }
+
+    AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+
     def __init__(self, voices_dir: str = "demo/voices", openai_voice_mapping: Optional[str] = None,
                  max_duration: float = 10.0, trim_silence: bool = True, trim_db: float = 30.0):
         self.voices_dir = Path(voices_dir)
@@ -58,31 +78,40 @@ class VoiceManager:
             self.OPENAI_VOICE_MAPPING = self._get_default_mapping()
 
         self.load_voice_presets()
-    
+
     @staticmethod
     def _get_default_mapping() -> Dict[str, str]:
-        """Get default OpenAI voice mapping using demo voices."""
+        """Default OpenAI → preset mapping (legacy bare-stem demo voices)."""
         return {
             "alloy": "en-Alice_woman",
             "echo": "en-Carter_man",
             "fable": "en-Maya_woman",
             "onyx": "en-Frank_man",
             "nova": "en-Mary_woman_bgm",
-            "shimmer": "en-Alice_woman"
+            "shimmer": "en-Alice_woman",
         }
-    
-    AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+
+    @classmethod
+    def _validate_lang_code(cls, language: str) -> str:
+        """Normalize and validate a language code. Returns the lowercased code."""
+        if not language:
+            raise ValueError("Language code is required")
+        lang = language.lower().strip()
+        if not lang or '/' in lang or '\\' in lang or lang.startswith('.'):
+            raise ValueError(f"Invalid language code: {language!r}")
+        if lang not in cls._LANG_CODES:
+            allowed = ", ".join(sorted(cls._LANG_CODES))
+            raise ValueError(
+                f"Unknown language code {language!r}. Supported: {allowed}"
+            )
+        return lang
 
     def load_voice_presets(self):
-        """Recursively scan voices directory and load available presets.
+        """Recursively scan ``voices_dir`` and register every audio file.
 
-        Subdirectory names are treated as language codes (e.g. ``en/``, ``pl/``).
-        Filenames may also encode language as a trailing ``_<code>`` segment
-        (e.g. ``woman_1_en.mp3``). Both are fed to `_guess_language`.
-
-        Preset name defaults to the filename stem. If two files in different
-        folders share the same stem, the second one is registered under a
-        folder-qualified name (e.g. ``pl/woman_1``) to avoid clobbering.
+        Files inside a language folder are keyed as ``<lang>/<stem>``. Files
+        directly under ``voices_dir`` are keyed by bare stem (legacy demo
+        voices). Hidden files and unsupported extensions are skipped.
         """
         if not self.voices_dir.exists():
             print(f"Warning: Voices directory not found at {self.voices_dir}")
@@ -93,92 +122,57 @@ class VoiceManager:
                 continue
             if file_path.suffix.lower() not in self.AUDIO_EXTENSIONS:
                 continue
-            # Skip hidden files (e.g. macOS .DS_Store siblings, ._resource forks)
-            if any(part.startswith('.') for part in file_path.relative_to(self.voices_dir).parts):
+            rel = file_path.relative_to(self.voices_dir)
+            if any(part.startswith('.') for part in rel.parts):
                 continue
 
-            stem = file_path.stem
-            if stem in self.voice_presets:
-                # Collision: qualify with parent folder relative to voices_dir.
-                rel_parent = file_path.relative_to(self.voices_dir).parent
-                qualified = f"{rel_parent.as_posix()}/{stem}" if rel_parent != Path('.') else stem
-                if qualified in self.voice_presets:
-                    print(f"Warning: duplicate voice preset '{qualified}', skipping {file_path}")
-                    continue
-                self.voice_presets[qualified] = str(file_path)
+            parts = rel.parts
+            if len(parts) >= 2 and parts[0].lower() in self._LANG_CODES:
+                key = f"{parts[0].lower()}/{file_path.stem}"
             else:
-                self.voice_presets[stem] = str(file_path)
+                key = file_path.stem
+
+            if key in self.voice_presets:
+                print(f"Warning: duplicate voice preset '{key}', skipping {file_path}")
+                continue
+            self.voice_presets[key] = str(file_path)
 
         print(f"Loaded {len(self.voice_presets)} voice presets from {self.voices_dir}")
         if self.voice_presets:
             print(f"Available voices: {', '.join(sorted(self.voice_presets.keys()))}")
-    
+
     def get_voice_path(self, voice_name: str, is_openai_voice: bool = False) -> Optional[str]:
-        """
-        Get path to voice preset file.
-        
-        Args:
-            voice_name: Name of voice (OpenAI voice or VibeVoice preset name)
-            is_openai_voice: Whether this is an OpenAI voice name
-            
-        Returns:
-            Path to voice file, or None if not found
-        """
-        # Map OpenAI voice to VibeVoice preset if needed
+        """Resolve a preset key (or OpenAI voice name) to an on-disk path."""
         if is_openai_voice:
             voice_name = self.OPENAI_VOICE_MAPPING.get(voice_name, voice_name)
-        
         return self.voice_presets.get(voice_name)
-    
+
     def load_voice_audio(
         self,
         voice_name: str,
         is_openai_voice: bool = False,
-        target_sr: int = 24000
+        target_sr: int = 24000,
     ) -> Optional[np.ndarray]:
-        """
-        Load voice audio from preset.
-        
-        Args:
-            voice_name: Name of voice
-            is_openai_voice: Whether this is an OpenAI voice name
-            target_sr: Target sample rate
-            
-        Returns:
-            Audio array, or None if voice not found
-        """
+        """Decode the preset's audio into a float32 mono ndarray at ``target_sr``."""
         voice_path = self.get_voice_path(voice_name, is_openai_voice)
-        
         if not voice_path:
             return None
-        
+
         try:
-            # Check if file format needs pydub (m4a, aac, mp3)
             file_ext = Path(voice_path).suffix.lower()
-            
+
             if file_ext in ['.m4a', '.aac', '.mp3']:
-                # Use pydub for these formats
                 audio_segment = AudioSegment.from_file(voice_path)
-                
-                # Convert to mono if needed
                 if audio_segment.channels > 1:
                     audio_segment = audio_segment.set_channels(1)
-                
-                # Get sample rate
                 sr = audio_segment.frame_rate
-                
-                # Convert to numpy array (normalized to [-1, 1])
                 samples = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
-                wav = samples / (2**15)  # Normalize 16-bit PCM to [-1, 1]
-                
+                wav = samples / (2**15)
             else:
-                # Use soundfile for wav, flac, ogg
                 wav, sr = sf.read(voice_path)
-                
-                # Convert stereo to mono if needed
                 if len(wav.shape) > 1:
                     wav = np.mean(wav, axis=1)
-            
+
             if sr != target_sr:
                 wav = librosa.resample(wav, orig_sr=sr, target_sr=target_sr)
 
@@ -194,25 +188,21 @@ class VoiceManager:
         except Exception as e:
             print(f"Error loading voice {voice_name} from {voice_path}: {e}")
             return None
-    
+
     def resolve_voice_for_language(
         self,
         voice_name: str,
         language: str,
         is_openai_voice: bool = False,
     ) -> Optional[str]:
-        """Find a preset key for ``voice_name`` that lives under ``<voices_dir>/<language>/``.
+        """Find a preset key under ``<voices_dir>/<language>/`` matching ``voice_name``.
 
-        Returns the preset key (usable with :meth:`load_voice_audio`) or ``None`` if no
-        match exists. Match order:
-
-        1. Exact stem match inside the language folder (e.g. ``pl/Alice_woman``).
-        2. Any preset under that folder whose stem shares a common base with the
-           OpenAI-mapped name (e.g. ``alloy`` → mapping ``en-Alice_woman`` → strip
-           ``en-`` → look for ``Alice_woman`` in ``pl/``).
+        Match order: exact ``<lang>/<voice_name>`` key, then for OpenAI voices
+        the mapped preset (with any legacy ``<code>-`` prefix stripped).
         """
-        lang = (language or "").lower().strip()
-        if not lang:
+        try:
+            lang = self._validate_lang_code(language)
+        except ValueError:
             return None
 
         candidates = [voice_name]
@@ -220,127 +210,92 @@ class VoiceManager:
             mapped = self.OPENAI_VOICE_MAPPING.get(voice_name)
             if mapped:
                 candidates.append(mapped)
-                # Strip legacy ``<code>-`` language prefix (e.g. ``en-Alice_woman`` → ``Alice_woman``).
-                if "-" in mapped:
+                # Mapped value may itself be "<lang>/<stem>" or legacy "<code>-<stem>".
+                if "/" in mapped:
+                    candidates.append(mapped.split("/", 1)[1])
+                elif "-" in mapped:
                     head, rest = mapped.split("-", 1)
                     if head.lower() in self._LANG_CODES:
                         candidates.append(rest)
 
-        voices_root = self.voices_dir.resolve()
-        for key, path in self.voice_presets.items():
-            try:
-                rel = Path(path).resolve().relative_to(voices_root)
-            except ValueError:
-                continue
-            parts = rel.parts
-            if len(parts) < 2 or parts[0].lower() != lang:
-                continue
-            if rel.stem in candidates:
+        for cand in candidates:
+            stem = cand.rsplit("/", 1)[-1]
+            key = f"{lang}/{stem}"
+            if key in self.voice_presets:
                 return key
-
         return None
 
-    def list_available_voices(self) -> List[Dict[str, str]]:
+    def list_available_voices(self, language: Optional[str] = None) -> List[Dict[str, str]]:
+        """Return registered presets, optionally filtered by language code.
+
+        ``language`` is an ISO 639-1 code (e.g. ``"pl"``). When supplied, only
+        presets stored under that language folder are returned.
         """
-        Get list of available voice presets.
-        
-        Returns:
-            List of voice information dictionaries
-        """
+        lang_filter: Optional[str] = None
+        if language:
+            lang_filter = self._validate_lang_code(language)
+
         voices = []
         for name, path in sorted(self.voice_presets.items()):
+            voice_lang_code = self._language_code_for(name)
+            if lang_filter and voice_lang_code != lang_filter:
+                continue
             voices.append({
                 "name": name,
                 "path": path,
-                "language": self._guess_language(name)
+                "language": self._LANG_CODES.get(voice_lang_code, "Unknown") if voice_lang_code else "Unknown",
+                "language_code": voice_lang_code or "",
             })
         return voices
-    
+
     def list_openai_voices(self) -> List[Dict[str, str]]:
-        """
-        Get list of OpenAI-compatible voices.
-        
-        Returns:
-            List of OpenAI voice information
-        """
+        """Return the OpenAI voice mapping with availability flags."""
         voices = []
         for openai_name, vibevoice_preset in self.OPENAI_VOICE_MAPPING.items():
-            if vibevoice_preset in self.voice_presets:
-                voices.append({
-                    "name": openai_name,
-                    "vibevoice_preset": vibevoice_preset,
-                    "available": True
-                })
-            else:
-                voices.append({
-                    "name": openai_name,
-                    "vibevoice_preset": vibevoice_preset,
-                    "available": False
-                })
+            voices.append({
+                "name": openai_name,
+                "vibevoice_preset": vibevoice_preset,
+                "available": vibevoice_preset in self.voice_presets,
+            })
         return voices
-    
-    # ISO 639-1 codes → display names. Extend as needed.
-    _LANG_CODES = {
-        "en": "English", "zh": "Chinese", "pl": "Polish", "de": "German",
-        "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
-        "ru": "Russian", "ja": "Japanese", "ko": "Korean", "nl": "Dutch",
-        "cs": "Czech", "uk": "Ukrainian", "tr": "Turkish", "ar": "Arabic",
-        "hi": "Hindi", "in": "Indian English",
-    }
 
-    def _guess_language(self, voice_name: str) -> str:
-        """Guess language from folder prefix, filename suffix, or name prefix.
+    def _language_code_for(self, voice_key: str) -> Optional[str]:
+        """Return the ISO 639-1 code of a registered preset, or None."""
+        # Composite key: "<lang>/<stem>"
+        if "/" in voice_key:
+            head = voice_key.split("/", 1)[0].lower()
+            if head in self._LANG_CODES:
+                return head
 
-        Precedence (strongest → weakest):
-          1. Parent folder name (e.g. ``en/woman_1.mp3`` → en)
-          2. Trailing ``_<code>`` segment in the stem (e.g. ``woman_1_en``)
-          3. Legacy ``<code>-`` prefix (e.g. ``en-Alice_woman``)
-        """
-        # Resolve path-qualified names back to the actual on-disk path.
-        path_str = self.voice_presets.get(voice_name)
-
-        if path_str:
-            try:
-                rel = Path(path_str).resolve().relative_to(self.voices_dir.resolve())
-                parts = rel.parts
-                if len(parts) > 1:
-                    first = parts[0].lower()
-                    if first in self._LANG_CODES:
-                        return self._LANG_CODES[first]
-                stem = rel.stem
-            except ValueError:
-                stem = Path(path_str).stem
-        else:
-            stem = voice_name.rsplit('/', 1)[-1]
-
-        # Trailing _<code>
+        # Legacy bare-stem keys: try filename hints.
+        stem = voice_key
         if '_' in stem:
             tail = stem.rsplit('_', 1)[-1].lower()
             if tail in self._LANG_CODES:
-                return self._LANG_CODES[tail]
-
-        # Legacy <code>- prefix
+                return tail
         if '-' in stem:
             head = stem.split('-', 1)[0].lower()
             if head in self._LANG_CODES:
-                return self._LANG_CODES[head]
+                return head
+        return None
 
-        return "Unknown"
-    
+    def _guess_language(self, voice_name: str) -> str:
+        """Display name (e.g. ``"Polish"``) for a preset key."""
+        code = self._language_code_for(voice_name)
+        return self._LANG_CODES.get(code, "Unknown") if code else "Unknown"
+
     def add_voice_from_bytes(
         self,
         name: str,
         data: bytes,
         suffix: str,
-        language: Optional[str] = None,
+        language: str,
     ) -> Dict[str, str]:
-        """Persist an uploaded voice sample to the voices directory and register it.
+        """Persist an uploaded voice sample under ``<voices_dir>/<language>/``.
 
-        If ``language`` is provided (e.g. ``"en"``), the file is stored under
-        ``<voices_dir>/<language>/<name><suffix>`` — matching the convention
-        used when presets are organized by language subfolder.
-
-        Raises ValueError on invalid name/suffix or unreadable audio.
+        Registers the file as ``<language>/<stem>``. ``language`` is required
+        and must be a known ISO 639-1 code.
+        Raises ValueError on invalid name/suffix/language or unreadable audio.
         """
         suffix = suffix.lower()
         if not suffix.startswith('.'):
@@ -350,31 +305,29 @@ class VoiceManager:
                 f"Unsupported audio extension '{suffix}'. Allowed: {sorted(self.AUDIO_EXTENSIONS)}"
             )
 
-        # Sanitize: disallow path separators and hidden files; stem only.
         stem = Path(name).stem
         if not stem or stem.startswith('.') or '/' in name or '\\' in name:
             raise ValueError(f"Invalid voice name: {name!r}")
 
-        target_dir = self.voices_dir
-        if language:
-            lang = language.lower().strip()
-            if '/' in lang or '\\' in lang or lang.startswith('.') or not lang:
-                raise ValueError(f"Invalid language: {language!r}")
-            target_dir = self.voices_dir / lang
-
+        lang = self._validate_lang_code(language)
+        target_dir = self.voices_dir / lang
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{stem}{suffix}"
+        key = f"{lang}/{stem}"
 
-        # Write then validate by attempting to load it.
+        if key in self.voice_presets or target.exists():
+            raise ValueError(
+                f"Voice '{key}' already exists. Delete it first or choose a different name."
+            )
+
         target.write_bytes(data)
         try:
-            self.voice_presets[stem] = str(target)
-            audio = self.load_voice_audio(stem)
+            self.voice_presets[key] = str(target)
+            audio = self.load_voice_audio(key)
             if audio is None:
                 raise ValueError("Uploaded file could not be decoded as audio")
         except Exception:
-            # Roll back on failure.
-            self.voice_presets.pop(stem, None)
+            self.voice_presets.pop(key, None)
             try:
                 target.unlink()
             except OSError:
@@ -382,18 +335,18 @@ class VoiceManager:
             raise
 
         return {
-            "name": stem,
+            "name": key,
             "path": str(target),
-            "language": self._guess_language(stem),
+            "language": self._LANG_CODES.get(lang, "Unknown"),
+            "language_code": lang,
         }
 
     def delete_voice(self, name: str) -> bool:
-        """Delete a voice preset from disk and unregister it. Returns True if removed."""
+        """Delete a preset from disk and unregister it. Returns True if removed."""
         path = self.voice_presets.get(name)
         if not path:
             return False
 
-        # Safety check: must be inside voices_dir.
         resolved = Path(path).resolve()
         try:
             resolved.relative_to(self.voices_dir.resolve())
@@ -413,16 +366,10 @@ class VoiceManager:
         self.load_voice_presets()
 
     def get_default_voice(self) -> Optional[str]:
-        """Get a default voice preset name."""
-        # Prefer English voices
-        for name in self.voice_presets.keys():
-            if name.startswith("en-"):
+        """Pick a sensible default preset (prefers English)."""
+        for name in self.voice_presets:
+            if name.startswith("en/") or name.startswith("en-"):
                 return name
-        
-        # Return any available voice
         if self.voice_presets:
-            return next(iter(self.voice_presets.keys()))
-        
+            return next(iter(self.voice_presets))
         return None
-
-

@@ -2,7 +2,7 @@
 
 import logging
 import time
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 
 from api.models import OpenAITTSRequest, ErrorResponse
@@ -40,6 +40,17 @@ def get_voice_manager() -> VoiceManager:
     "/speech",
     summary="Generate speech (OpenAI-compatible)",
     response_description="Encoded audio bytes in the requested `response_format`.",
+    responses={
+        200: {
+            "content": {
+                "audio/mpeg": {}, "audio/wav": {}, "audio/flac": {},
+                "audio/ogg": {}, "audio/aac": {}, "audio/mp4": {},
+            },
+            "description": "Generated audio.",
+        },
+        400: {"model": ErrorResponse, "description": "Unknown voice or invalid params."},
+        503: {"model": ErrorResponse, "description": "TTS service not ready."},
+    },
 )
 async def create_speech(
     request: OpenAITTSRequest,
@@ -197,42 +208,72 @@ async def create_speech(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/voices")
+@router.get(
+    "/voices",
+    summary="List voices (OpenAI-compatible)",
+    response_description="OpenAI-shaped voice listing (`{object: 'list', data: [...]}`).",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid `language` filter."},
+    },
+)
 async def list_voices(
-    voices: VoiceManager = Depends(get_voice_manager)
+    language: str | None = Query(
+        None,
+        description="Optional ISO 639-1 language filter (e.g. `pl`, `en`). When set, only presets stored under `<voices_dir>/<language>/` are returned, and the OpenAI standard voice aliases are omitted.",
+        examples=["pl"],
+        min_length=2,
+        max_length=3,
+    ),
+    voices: VoiceManager = Depends(get_voice_manager),
 ):
-    """
-    List all available voices in OpenAI-compatible format.
-    
-    Returns OpenAI standard voices (if their mapped presets exist) plus all custom voices.
+    """List all available voices in OpenAI-compatible format.
+
+    Without `language`: includes the standard OpenAI voice aliases
+    (`alloy`, `echo`, ...) when their mapped presets exist, plus every
+    custom preset registered on the server.
+
+    With `language`: returns only the presets stored under that language
+    folder. The OpenAI aliases are intentionally omitted because they map
+    to a fixed set of (typically English) presets.
     """
     try:
         voice_list = []
-        
-        # Add OpenAI standard voices (if their mapped presets exist)
-        for openai_name, vibevoice_preset in voices.OPENAI_VOICE_MAPPING.items():
-            if vibevoice_preset in voices.voice_presets:
-                voice_list.append({
-                    "id": openai_name,
-                    "object": "voice",
-                    "name": openai_name
-                })
-        
-        # Add all custom voices from VOICES_DIR
-        all_voices = voices.list_available_voices()
-        for voice in all_voices:
-            # Skip if already added as OpenAI voice
-            if voice["name"] not in voices.OPENAI_VOICE_MAPPING.values():
+
+        if language is None:
+            for openai_name, vibevoice_preset in voices.OPENAI_VOICE_MAPPING.items():
+                if vibevoice_preset in voices.voice_presets:
+                    voice_list.append({
+                        "id": openai_name,
+                        "object": "voice",
+                        "name": openai_name,
+                    })
+
+            all_voices = voices.list_available_voices()
+            for voice in all_voices:
+                if voice["name"] not in voices.OPENAI_VOICE_MAPPING.values():
+                    voice_list.append({
+                        "id": voice["name"],
+                        "object": "voice",
+                        "name": voice["name"],
+                        "language": voice["language"],
+                        "language_code": voice["language_code"],
+                    })
+        else:
+            for voice in voices.list_available_voices(language=language):
                 voice_list.append({
                     "id": voice["name"],
                     "object": "voice",
-                    "name": voice["name"]
+                    "name": voice["name"],
+                    "language": voice["language"],
+                    "language_code": voice["language_code"],
                 })
-        
+
         return {
             "object": "list",
-            "data": voice_list
+            "data": voice_list,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

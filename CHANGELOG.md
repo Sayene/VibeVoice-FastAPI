@@ -4,6 +4,52 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-04-27
+
+### Changed (breaking)
+
+- **Voice presets are now organized by language folder.** Files live under
+  `<voices_dir>/<lang>/<name>.<ext>` (ISO 639-1 code), and the preset key
+  used everywhere in the API is `<lang>/<name>` (e.g. `pl/Alice`). Files
+  sitting at the root of `<voices_dir>` continue to load under their bare
+  stem for backward compatibility (legacy demo voices).
+- **`POST /v1/vibevoice/voices` requires a `language` form field** —
+  uploads must declare the language so the file is stored in the correct
+  subfolder and registered as `<language>/<name>`. Returns `409` if a
+  preset with the same `<language>/<name>` already exists.
+- **`DELETE /v1/vibevoice/voices/{voice_name}` is now
+  `DELETE /v1/vibevoice/voices/{language}/{name}`** — language is a path
+  segment so slashes don't break routing.
+- **Updated generation defaults** (overridable via env / per-request):
+  - `default_voice="man_2_pl"`, `default_language="pl"`
+  - `default_cfg_scale=1.85` (was `1.3`)
+  - `vibevoice_inference_steps=25` (was `10`)
+  - `default_seed=0`, `default_do_sample=True` (was `False`)
+  - `default_temperature=0.95` (was `1.0`), `default_top_p=0.95` (was `1.0`)
+  - `default_max_words_per_chunk=100` (was `250`)
+  - `default_chunk_silence_ms=500` (was `0`)
+  These are also reflected in the Swagger-visible defaults on
+  `OpenAITTSRequest` and `VibeVoiceGenerateRequest`. The `voice` field on
+  `OpenAITTSRequest` is no longer required and defaults to `man_2_pl`.
+
+### Added
+
+- **`GET /v1/vibevoice/voices?language=<code>`** — optional ISO 639-1
+  filter; returns only presets stored under the matching language folder.
+  Same filter is also available on the OpenAI-compatible
+  `GET /v1/audio/voices?language=<code>`.
+- **Typed response models** — `VoiceInfo`, `VoiceListResponse`,
+  `VoiceUploadResponse`, `ReloadVoicesResponse` (each entry now carries
+  both a human-readable `language` and the `language_code`).
+- **Richer Swagger annotations** on every voice endpoint: summaries,
+  response descriptions, error response models (`400/404/409/503`), and
+  documented path/query/form parameters with examples.
+
+### Fixed
+
+- Voice keys are now unambiguous: language-folder voices always register
+  as `<lang>/<stem>` instead of relying on collision-detection fallbacks.
+
 ## [0.4.1] — 2026-04-26
 
 ### Added

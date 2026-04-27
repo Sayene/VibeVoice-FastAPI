@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         description="Device for inference: cuda, cpu, or mps"
     )
     vibevoice_inference_steps: int = Field(
-        default=10,
+        default=25,
         description="Number of diffusion inference steps"
     )
     vibevoice_dtype: Optional[str] = Field(
@@ -93,28 +93,44 @@ class Settings(BaseSettings):
     )
     
     # Generation Defaults
+    default_voice: str = Field(
+        default="man_2_pl",
+        description="Default voice preset key when none is supplied on the request."
+    )
+    default_language: str = Field(
+        default="pl",
+        description="Default ISO 639-1 language code when none is supplied on the request."
+    )
+    default_speed: float = Field(
+        default=1.0,
+        description="Default playback speed multiplier (0.25–4.0)."
+    )
     default_cfg_scale: float = Field(
-        default=1.3,
-        description="Default CFG scale for generation (1.0-3.0, higher = more faithful to prompt)"
+        default=1.85,
+        description="Default CFG scale for generation (1.0-2.0, higher = more faithful to prompt)"
     )
     default_response_format: str = Field(
         default="mp3",
         description="Default audio response format"
+    )
+    default_seed: int = Field(
+        default=0,
+        description="Default RNG seed when none is supplied on the request."
     )
     max_generation_length: int = Field(
         default=90 * 60,  # 90 minutes in seconds
         description="Maximum generation length in seconds"
     )
     default_do_sample: bool = Field(
-        default=False,
+        default=True,
         description="Whether to use sampling for text generation (False = greedy decoding)"
     )
     default_temperature: float = Field(
-        default=1.0,
+        default=0.95,
         description="Temperature for sampling (only used if do_sample=True)"
     )
     default_top_p: float = Field(
-        default=1.0,
+        default=0.95,
         description="Top-p (nucleus) sampling (only used if do_sample=True)"
     )
     default_top_k: int = Field(
@@ -126,7 +142,7 @@ class Settings(BaseSettings):
         description="Repetition penalty (1.0 = no penalty)"
     )
     default_max_words_per_chunk: int = Field(
-        default=250,
+        default=100,
         description=(
             "Default max words per generated chunk. Long scripts are split at "
             "sentence boundaries and synthesized sequentially to preserve quality. "
@@ -134,7 +150,7 @@ class Settings(BaseSettings):
         ),
     )
     default_chunk_silence_ms: int = Field(
-        default=0,
+        default=500,
         description="Silence (ms) inserted between concatenated chunks (non-streaming).",
     )
     

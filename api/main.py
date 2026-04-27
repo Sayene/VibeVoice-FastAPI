@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="VibeVoice TTS API",
     description="OpenAI-compatible Text-to-Speech API powered by VibeVoice",
-    version="0.4.1",
+    version="0.5.0",
     lifespan=lifespan
 )
 
@@ -98,7 +98,7 @@ async def root():
     """Root endpoint with API information."""
     return {
         "name": "VibeVoice TTS API",
-        "version": "0.4.1",
+        "version": "0.5.0",
         "description": "OpenAI-compatible Text-to-Speech API powered by VibeVoice",
         "endpoints": {
             "openai_compatible": {
@@ -107,9 +107,9 @@ async def root():
             },
             "vibevoice_extended": {
                 "generate": "/v1/vibevoice/generate",
-                "list_voices": "GET /v1/vibevoice/voices",
-                "upload_voice": "POST /v1/vibevoice/voices (multipart: file, name)",
-                "delete_voice": "DELETE /v1/vibevoice/voices/{voice_name}",
+                "list_voices": "GET /v1/vibevoice/voices?language=<iso639-1>",
+                "upload_voice": "POST /v1/vibevoice/voices (multipart: language, file, name)",
+                "delete_voice": "DELETE /v1/vibevoice/voices/{language}/{name}",
                 "reload_voices": "POST /v1/vibevoice/voices/reload",
                 "health": "/v1/vibevoice/health"
             },

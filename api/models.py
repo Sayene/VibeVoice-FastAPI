@@ -21,8 +21,8 @@ class OpenAITTSRequest(BaseModel):
         max_length=4096
     )
     voice: str = Field(
-        ...,
-        description="Voice to use: OpenAI voice names (alloy, echo, fable, onyx, nova, shimmer) or any VibeVoice preset name"
+        default="man_2_pl",
+        description="Voice to use: OpenAI voice names (alloy, echo, fable, onyx, nova, shimmer) or any VibeVoice preset key (e.g. `pl/Alice`, `man_2_pl`)."
     )
     response_format: Optional[Literal["mp3", "opus", "aac", "flac", "wav", "pcm", "m4a"]] = Field(
         default="mp3",
@@ -35,7 +35,7 @@ class OpenAITTSRequest(BaseModel):
         description="Speed of generated audio (0.25 to 4.0)"
     )
     language: Optional[str] = Field(
-        default=None,
+        default="pl",
         description="ISO 639-1 language code (e.g. 'en', 'pl', 'de'). When set, the voice is resolved to a preset stored under <voices_dir>/<language>/."
     )
 
@@ -44,65 +44,51 @@ class OpenAITTSRequest(BaseModel):
     # using only the standard OpenAI fields will continue to work unchanged.
 
     cfg_scale: Optional[float] = Field(
-        default=None,
+        default=1.85,
         ge=1.0,
         le=2.0,
-        description=(
-            "Classifier-free guidance scale (1.0–2.0). Defaults to "
-            "server `DEFAULT_CFG_SCALE` (typically 1.3)."
-        ),
+        description="Classifier-free guidance scale (1.0–2.0). Higher = follows the script more strictly.",
     )
     inference_steps: Optional[int] = Field(
-        default=None,
+        default=25,
         ge=5,
         le=50,
-        description=(
-            "Number of DDPM diffusion steps (5–50). Higher = better fidelity, "
-            "slower. Defaults to server `VIBEVOICE_INFERENCE_STEPS`."
-        ),
+        description="Number of DDPM diffusion steps (5–50). Higher = better fidelity, slower.",
     )
     seed: Optional[int] = Field(
-        default=None,
+        default=0,
         description="Random seed for reproducible generation.",
     )
     do_sample: Optional[bool] = Field(
-        default=None,
-        description=(
-            "Use sampling instead of greedy decoding. Auto-enabled when "
-            "`temperature` or `top_p` is supplied. Defaults to server "
-            "`DEFAULT_DO_SAMPLE`."
-        ),
+        default=True,
+        description="Use sampling instead of greedy decoding. Auto-enabled when `temperature` or `top_p` is supplied.",
     )
     temperature: Optional[float] = Field(
-        default=None,
+        default=0.95,
         ge=0.0,
         le=5.0,
         description="Sampling temperature (only used when do_sample=True).",
     )
     top_p: Optional[float] = Field(
-        default=None,
+        default=0.95,
         gt=0.0,
         le=1.0,
         description="Nucleus sampling top_p (only used when do_sample=True).",
     )
     max_words_per_chunk: Optional[int] = Field(
-        default=None,
+        default=100,
         ge=0,
         le=2000,
         description=(
             "Max words per generated chunk; long inputs are split at sentence "
-            "boundaries and synthesized sequentially. 0 disables chunking. "
-            "Defaults to server `DEFAULT_MAX_WORDS_PER_CHUNK`."
+            "boundaries and synthesized sequentially. 0 disables chunking."
         ),
     )
     chunk_silence_ms: Optional[int] = Field(
-        default=None,
+        default=500,
         ge=0,
         le=5000,
-        description=(
-            "Silence (ms) inserted between concatenated chunks. Defaults to "
-            "server `DEFAULT_CHUNK_SILENCE_MS`."
-        ),
+        description="Silence (ms) inserted between concatenated chunks.",
     )
 
     # Note: Voice validation removed to allow any VibeVoice preset name
@@ -125,9 +111,12 @@ class SpeakerConfig(BaseModel):
     voice_preset: Optional[str] = Field(
         default=None,
         description=(
-            "Name of an on-disk voice preset (see `GET /v1/vibevoice/voices`). "
+            "Preset key (see `GET /v1/vibevoice/voices`). For voices organized by "
+            "language, this is `<lang>/<name>` (e.g. `pl/Alice`); legacy root-level "
+            "demo voices use the bare stem (e.g. `en-Alice_woman`). "
             "Mutually exclusive with `voice_sample_base64`."
         ),
+        examples=["pl/Alice", "en-Alice_woman"],
     )
     voice_sample_base64: Optional[str] = Field(
         default=None,
@@ -176,17 +165,16 @@ class VibeVoiceGenerateRequest(BaseModel):
         ),
     )
     cfg_scale: Optional[float] = Field(
-        default=1.3,
+        default=1.85,
         ge=1.0,
         le=2.0,
         description=(
             "Classifier-free guidance scale. Higher values follow the script "
-            "more strictly at the cost of naturalness. Typical range 1.2–1.5; "
-            "1.3 is the model default."
+            "more strictly at the cost of naturalness. Typical range 1.2–1.9."
         ),
     )
     inference_steps: Optional[int] = Field(
-        default=10,
+        default=25,
         ge=5,
         le=50,
         description=(
@@ -208,19 +196,18 @@ class VibeVoiceGenerateRequest(BaseModel):
         ),
     )
     seed: Optional[int] = Field(
-        default=None,
-        description="Random seed for reproducible generation. Omit for non-deterministic output.",
+        default=0,
+        description="Random seed for reproducible generation. Set to a different value for non-deterministic output.",
     )
     do_sample: Optional[bool] = Field(
-        default=None,
+        default=True,
         description=(
             "If true, use stochastic sampling for the LLM; if false, use greedy "
-            "decoding (more stable, recommended default). Auto-enabled when "
-            "`temperature` or `top_p` is supplied."
+            "decoding. Auto-enabled when `temperature` or `top_p` is supplied."
         ),
     )
     temperature: Optional[float] = Field(
-        default=None,
+        default=0.95,
         ge=0.0,
         le=5.0,
         description=(
@@ -230,7 +217,7 @@ class VibeVoiceGenerateRequest(BaseModel):
         ),
     )
     top_p: Optional[float] = Field(
-        default=None,
+        default=0.95,
         gt=0.0,
         le=1.0,
         description=(
@@ -239,7 +226,7 @@ class VibeVoiceGenerateRequest(BaseModel):
         ),
     )
     max_words_per_chunk: Optional[int] = Field(
-        default=None,
+        default=100,
         ge=0,
         le=2000,
         description=(
@@ -249,18 +236,16 @@ class VibeVoiceGenerateRequest(BaseModel):
             "degrades on very long single-shot generations. Multi-speaker "
             "scripts are chunked per-turn — chunks never cross speaker "
             "boundaries and `Speaker N:` labels are re-emitted in each chunk. "
-            "Set `0` to disable chunking. Omit to use the server default "
-            "(`DEFAULT_MAX_WORDS_PER_CHUNK`, typically 250)."
+            "Set `0` to disable chunking."
         ),
     )
     chunk_silence_ms: Optional[int] = Field(
-        default=None,
+        default=500,
         ge=0,
         le=5000,
         description=(
             "Silence (in milliseconds) inserted between concatenated chunks. "
-            "Only applies in non-streaming mode. Omit to use the server "
-            "default (`DEFAULT_CHUNK_SILENCE_MS`, typically 0)."
+            "Only applies in non-streaming mode."
         ),
     )
 
@@ -340,11 +325,45 @@ class HealthResponse(BaseModel):
     )
 
 
+class VoiceInfo(BaseModel):
+    """Single voice preset entry."""
+
+    name: str = Field(
+        ...,
+        description="Preset key. Language-folder voices are keyed `<lang>/<stem>` (e.g. `pl/Alice`); legacy root-level files use the bare stem.",
+        examples=["pl/Alice", "en/Carter_man"],
+    )
+    path: str = Field(
+        ...,
+        description="Absolute or working-directory-relative path to the voice file on disk.",
+    )
+    language: str = Field(
+        ...,
+        description="Human-readable language name (e.g. `Polish`, `English`, or `Unknown` if it could not be inferred).",
+    )
+    language_code: str = Field(
+        default="",
+        description="ISO 639-1 code (e.g. `pl`, `en`). Empty string when the language could not be inferred.",
+    )
+
+
+class VoiceUploadResponse(VoiceInfo):
+    """Response from uploading a new voice preset."""
+    pass
+
+
+class ReloadVoicesResponse(BaseModel):
+    """Response from rescanning the voices directory."""
+
+    count: int = Field(..., description="Total number of presets registered after reload.")
+    voices: List[str] = Field(..., description="Sorted list of all preset keys.")
+
+
 class VoiceListResponse(BaseModel):
     """Response listing available voices."""
-    
-    voices: List[dict] = Field(
+
+    voices: List[VoiceInfo] = Field(
         ...,
-        description="List of available voice presets"
+        description="Available voice presets. When `language` was supplied as a query filter, only presets stored under that language folder are included.",
     )
 
