@@ -4,6 +4,27 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.3] — 2026-04-28
+
+### Fixed
+
+- **Stopped pre-processing reference voice clips by default.** Earlier
+  versions trimmed leading/trailing silence with
+  `librosa.effects.trim(top_db=30)` and hard-capped the clip to 10 s before
+  feeding it to the processor. The ComfyUI VibeVoice front-end and
+  Microsoft's reference inference demo do **neither** — they pass the raw
+  resampled mono clip straight in and rely on the processor's own
+  `AudioNormalizer` (-25 dBFS RMS) for level-matching. With our
+  preprocessing on:
+  - silence trim could shave off soft phoneme boundaries (consonants,
+    fricatives) → audible artefacts at the start of segments;
+  - 10 s cap discarded phoneme variety the model uses to generalise the
+    voice → degraded pronunciation/accent on non-English voices.
+  New defaults (env-overridable):
+  - `VOICE_SAMPLE_TRIM_SILENCE=false` (was `true`)
+  - `VOICE_SAMPLE_MAX_DURATION=0` — `0` disables the cap (was `10`).
+  `prepare_voice_sample` now treats `max_duration=0` as "no cap".
+
 ## [0.5.2] — 2026-04-28
 
 ### Fixed

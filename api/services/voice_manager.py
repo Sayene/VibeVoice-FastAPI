@@ -23,15 +23,24 @@ import io
 def prepare_voice_sample(
     audio: np.ndarray,
     sample_rate: int = 24000,
-    max_duration: float = 10.0,
-    trim_silence: bool = True,
+    max_duration: float = 0.0,
+    trim_silence: bool = False,
     trim_db: float = 30.0,
 ) -> np.ndarray:
-    """Trim silence and cap length of a reference voice clip.
+    """Optional reference-voice preprocessing.
 
-    Long or silence-padded reference clips cause the model to reproduce
-    fragments of the reference in its output. Keeping clips short (≤ 10 s)
-    and silence-free eliminates the artefact.
+    Disabled by default to match the ComfyUI VibeVoice front-end and the
+    Microsoft reference inference demo, both of which feed the raw resampled
+    mono clip straight into the processor (the processor's own
+    ``AudioNormalizer`` handles RMS normalisation to -25 dBFS).
+
+    - ``trim_silence`` (off by default): strip leading/trailing silence with
+      ``librosa.effects.trim(top_db=trim_db)``. Can shave off soft phoneme
+      boundaries and degrade pronunciation/accent fidelity on non-English
+      voices, so leave off unless you know your clips have long silences.
+    - ``max_duration`` (0 = no cap): hard-cap clip length in seconds. Cutting
+      a reference shorter throws away phonemes the model uses to generalise
+      the voice; only useful if your clips are unusually long.
     """
     if trim_silence:
         try:
@@ -39,9 +48,10 @@ def prepare_voice_sample(
         except Exception:
             pass
 
-    max_samples = int(max_duration * sample_rate)
-    if len(audio) > max_samples:
-        audio = audio[:max_samples]
+    if max_duration and max_duration > 0:
+        max_samples = int(max_duration * sample_rate)
+        if len(audio) > max_samples:
+            audio = audio[:max_samples]
 
     return audio
 
@@ -61,7 +71,7 @@ class VoiceManager:
     AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
 
     def __init__(self, voices_dir: str = "demo/voices", openai_voice_mapping: Optional[str] = None,
-                 max_duration: float = 10.0, trim_silence: bool = True, trim_db: float = 30.0):
+                 max_duration: float = 0.0, trim_silence: bool = False, trim_db: float = 30.0):
         self.voices_dir = Path(voices_dir)
         self.voice_presets: Dict[str, str] = {}
         self._max_duration = max_duration

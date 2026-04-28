@@ -45,18 +45,22 @@ class Settings(BaseSettings):
 
     # Voice sample pre-processing
     voice_sample_max_duration: float = Field(
-        default=10.0,
+        default=0.0,
         description=(
-            "Max duration (seconds) of reference voice clip fed to the model. "
-            "Clips longer than this are trimmed to avoid reference audio bleeding "
-            "into generated output. 8–12 s is the sweet spot for VibeVoice."
+            "Hard cap (in seconds) on the reference voice clip fed to the model. "
+            "0 disables the cap (default), matching the ComfyUI VibeVoice front-end "
+            "and Microsoft's reference inference demo. Set a positive value only if "
+            "your reference clips are unusually long."
         )
     )
     voice_sample_trim_silence: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "Strip leading/trailing silence from reference voice clips before "
-            "feeding them to the model."
+            "If true, strip leading/trailing silence from reference voice clips "
+            "with librosa.effects.trim before feeding them to the model. Disabled "
+            "by default — trimming can shave off soft phoneme boundaries and hurt "
+            "pronunciation/accent fidelity on non-English voices. The processor "
+            "already does its own RMS-based dB normalisation."
         )
     )
     voice_sample_trim_db: float = Field(
