@@ -4,6 +4,26 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.2] — 2026-04-28
+
+### Fixed
+
+- **Removed noise-scheduler override** in `TTSService.load_model`. Earlier
+  versions reconstructed the model's `noise_scheduler` after loading with
+  `algorithm_type='sde-dpmsolver++'` and `beta_schedule='squaredcos_cap_v2'`.
+  This had two audible side-effects vs ComfyUI / Microsoft's reference
+  inference demo (which both leave the scheduler at the model's defaults):
+  - The SDE variant of dpmsolver++ injects fresh Gaussian noise at every
+    reverse-diffusion step → audible as bleeding / strange noises at the
+    start of generated segments.
+  - `squaredcos_cap_v2` overrode the β-schedule the diffusion head was
+    actually trained with (`config.diffusion_head_config.ddpm_beta_schedule`)
+    → distorted diffusion trajectory, hurting pronunciation/accent fidelity
+    (especially noticeable on non-English voices).
+  Generation now uses the model's own `DPMSolverMultistepScheduler`
+  (deterministic `dpmsolver++` with the trained β-schedule), matching the
+  ComfyUI implementation exactly.
+
 ## [0.5.1] — 2026-04-27
 
 ### Added

@@ -151,13 +151,15 @@ class TTSService:
             except Exception as e:
                 print(f"torch.compile() failed: {e}, continuing without compilation")
 
-        # Configure noise scheduler
-        self.model.model.noise_scheduler = self.model.model.noise_scheduler.from_config(
-            self.model.model.noise_scheduler.config,
-            algorithm_type='sde-dpmsolver++',
-            beta_schedule='squaredcos_cap_v2'
-        )
-        
+        # Use the model's default noise scheduler (DPMSolverMultistepScheduler
+        # with the trained beta_schedule and the deterministic dpmsolver++
+        # algorithm). Earlier versions overrode this to sde-dpmsolver++ +
+        # squaredcos_cap_v2 — that injected stochastic noise at every reverse
+        # step (audible as "bleed" at the start of segments) and replaced the
+        # trained beta schedule (audible as poor pronunciation/accent). The
+        # ComfyUI front-end and Microsoft's reference inference demo both use
+        # the model defaults.
+
         # Set inference steps
         self.model.set_ddpm_inference_steps(num_steps=self.settings.vibevoice_inference_steps)
         
