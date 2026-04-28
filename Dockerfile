@@ -47,6 +47,12 @@ RUN pip install torch==2.8.* torchvision torchaudio --index-url https://download
 # torchao 0.13.0 was built for PyTorch 2.8.0
 RUN pip install torchao==0.13.0
 
+# Install bitsandbytes — required by pre-quantized HF checkpoints (e.g.
+# FabioSarracino/VibeVoice-Large-Q8, DevParker/VibeVoice7b-low-vram) that
+# ship a BitsAndBytes quantization_config in their config.json.
+RUN pip install "bitsandbytes>=0.45" || \
+    echo "WARNING: bitsandbytes install failed; bnb-quantized checkpoints will not load"
+
 # Install flash-attn from pre-built wheel (PyTorch 2.8 compatible)
 RUN pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiFALSE-cp312-cp312-linux_x86_64.whl || \
     echo "WARNING: flash-attn wheel install failed, continuing without it"

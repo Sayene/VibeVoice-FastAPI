@@ -4,6 +4,16 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.5] — 2026-04-28
+
+### Added
+
+- **`bitsandbytes>=0.45` baked into the main `Dockerfile`** so the
+  `FabioSarracino/VibeVoice-Large-Q8` and `DevParker/VibeVoice7b-low-vram`
+  pre-quantized checkpoints load out of the box. (`Dockerfile.spark`
+  already installed it.) The 0.5.4 pre-quantized loader fails fast with a
+  clear error if the package is missing.
+
 ## [0.5.4] — 2026-04-28
 
 ### Changed (default)
