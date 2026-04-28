@@ -4,6 +4,35 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] — 2026-04-28
+
+### Changed (default)
+
+- **`DEFAULT_DO_SAMPLE` now defaults to `False`** (was `True`). Greedy
+  decoding matches ComfyUI's `use_sampling=false` (the actual node-config
+  in production use) and Microsoft's reference inference demo. Stochastic
+  sampling lets the LLM drift away from the reference voice's pronunciation
+  and was a major contributor to poor accent fidelity on non-English
+  voices. `temperature` and `top_p` are unused while `do_sample=False`.
+  The `OpenAITTSRequest` and `VibeVoiceGenerateRequest` Pydantic schemas
+  now reflect this default in Swagger.
+
+### Fixed
+
+- **Pre-quantized VibeVoice checkpoints now load correctly** (e.g.
+  `FabioSarracino/VibeVoice-Large-Q8`, `DevParker/VibeVoice7b-low-vram`).
+  `TTSService.load_model` detects models that ship their own
+  `quantization_config` (either embedded in `config.json` or in a
+  `quantization_config.json` sidecar — same logic as ComfyUI's
+  `detect_model_quantization`) and switches to a dedicated load path:
+  - skips `torch_dtype` so the bundled BitsAndBytes config drives dtype;
+  - forces `attn_implementation="sdpa"` (BnB linear layers are not
+    compatible with `flash_attention_2`);
+  - keeps `device_map="cuda"`.
+  `bitsandbytes` is required and is checked at load time with a clear
+  error message. Set `VIBEVOICE_MODEL_PATH=FabioSarracino/VibeVoice-Large-Q8`
+  to match ComfyUI's `VibeVoice-Large-Q8` workflow.
+
 ## [0.5.3] — 2026-04-28
 
 ### Fixed

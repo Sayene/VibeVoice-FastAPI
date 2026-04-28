@@ -60,8 +60,8 @@ class OpenAITTSRequest(BaseModel):
         description="Random seed for reproducible generation.",
     )
     do_sample: Optional[bool] = Field(
-        default=True,
-        description="Use sampling instead of greedy decoding. Auto-enabled when `temperature` or `top_p` is supplied.",
+        default=False,
+        description="Use sampling instead of greedy decoding. Auto-enabled when `temperature` or `top_p` is supplied. False (default) matches ComfyUI's `use_sampling=false`.",
     )
     temperature: Optional[float] = Field(
         default=0.95,
@@ -200,10 +200,11 @@ class VibeVoiceGenerateRequest(BaseModel):
         description="Random seed for reproducible generation. Set to a different value for non-deterministic output.",
     )
     do_sample: Optional[bool] = Field(
-        default=True,
+        default=False,
         description=(
-            "If true, use stochastic sampling for the LLM; if false, use greedy "
-            "decoding. Auto-enabled when `temperature` or `top_p` is supplied."
+            "If true, use stochastic sampling for the LLM; if false (default), "
+            "use greedy decoding. Auto-enabled when `temperature` or `top_p` is "
+            "supplied. False matches ComfyUI's `use_sampling=false`."
         ),
     )
     temperature: Optional[float] = Field(

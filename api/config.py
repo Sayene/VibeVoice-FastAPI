@@ -126,8 +126,15 @@ class Settings(BaseSettings):
         description="Maximum generation length in seconds"
     )
     default_do_sample: bool = Field(
-        default=True,
-        description="Whether to use sampling for text generation (False = greedy decoding)"
+        default=False,
+        description=(
+            "Whether to use sampling for text generation. False (default) "
+            "= greedy/deterministic decoding, matching ComfyUI's "
+            "`use_sampling=false` and Microsoft's reference inference demo. "
+            "When False, `temperature` and `top_p` are unused. Setting True "
+            "lets the LLM drift away from the reference voice's pronunciation "
+            "and is a common cause of poor accent fidelity."
+        ),
     )
     default_temperature: float = Field(
         default=0.95,

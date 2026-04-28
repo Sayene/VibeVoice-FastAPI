@@ -52,6 +52,21 @@ class TTSService:
         # Load processor
         self.processor = VibeVoiceProcessor.from_pretrained(self.settings.vibevoice_model_path)
 
+        # Detect a model that already ships its own quantization_config (e.g.
+        # FabioSarracino/VibeVoice-Large-Q8 / DevParker/VibeVoice7b-low-vram).
+        # transformers' from_pretrained will auto-apply BitsAndBytes from the
+        # bundled config — but only if we don't fight it: passing torch_dtype
+        # against an int8/int4 model and forcing flash_attention_2 against
+        # BnB linear layers both break the load. Skip both when detected and
+        # let the bundled config drive everything (matches ComfyUI behaviour
+        # for Q8/Q4 checkpoints).
+        prequantized = self._detect_prequantized_model()
+        if prequantized:
+            print(f"Detected pre-quantized model ({prequantized}); skipping torch_dtype/flash_attention_2 overrides")
+            self._load_prequantized_model()
+            self._post_load_setup()
+            return
+
         # Determine if we should load to CPU first for quantization
         # This avoids loading full precision model to GPU then quantizing (wastes VRAM)
         load_to_cpu_first = (
@@ -142,6 +157,97 @@ class TTSService:
 
             self.model.eval()
 
+        self._post_load_setup()
+
+    def _detect_prequantized_model(self) -> Optional[str]:
+        """Return '4bit'/'8bit' if the model ships its own quantization_config,
+        else None. Mirrors ComfyUI's `detect_model_quantization`: checks both
+        a sidecar `quantization_config.json` and the embedded entry in
+        `config.json`. Works for local paths and HF Hub IDs.
+        """
+        import os
+        import json
+
+        path = self.settings.vibevoice_model_path
+
+        def _peek_config(p: str) -> Optional[dict]:
+            cfg_path = os.path.join(p, "config.json")
+            if os.path.isfile(cfg_path):
+                try:
+                    with open(cfg_path, "r") as f:
+                        return json.load(f)
+                except Exception:
+                    return None
+            return None
+
+        def _peek_sidecar(p: str) -> Optional[dict]:
+            qpath = os.path.join(p, "quantization_config.json")
+            if os.path.isfile(qpath):
+                try:
+                    with open(qpath, "r") as f:
+                        return json.load(f)
+                except Exception:
+                    return None
+            return None
+
+        cfg = None
+        if os.path.isdir(path):
+            cfg = _peek_sidecar(path) or _peek_config(path)
+        else:
+            # HF Hub ID: try to fetch config.json from the cache without loading the model
+            try:
+                from transformers.utils import cached_file
+                cfg_file = cached_file(path, "config.json")
+                with open(cfg_file, "r") as f:
+                    cfg = json.load(f)
+            except Exception as e:
+                logger.debug(f"Could not pre-fetch config.json for {path}: {e}")
+                return None
+
+        if not cfg:
+            return None
+
+        # quantization data lives either nested under "quantization_config"
+        # (config.json) or at the top level (quantization_config.json sidecar).
+        qc = cfg.get("quantization_config") if isinstance(cfg.get("quantization_config"), dict) else cfg
+        if isinstance(qc, dict):
+            if qc.get("load_in_4bit") or qc.get("bits") == 4:
+                return "4bit"
+            if qc.get("load_in_8bit"):
+                return "8bit"
+        return None
+
+    def _load_prequantized_model(self):
+        """Load a checkpoint that already carries its own quantization_config.
+
+        Mirrors ComfyUI: device_map='cuda', attn_implementation defaults to
+        sdpa (BnB linear layers are not compatible with flash_attention_2),
+        torch_dtype is intentionally NOT passed so transformers honours the
+        bundled BitsAndBytes config.
+        """
+        try:
+            import bitsandbytes  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "Pre-quantized VibeVoice models (e.g. VibeVoice-Large-Q8) require the "
+                "`bitsandbytes` package. Install with: pip install bitsandbytes"
+            )
+
+        if self.device != "cuda":
+            raise RuntimeError(
+                f"Pre-quantized VibeVoice models require a CUDA GPU; current device is "
+                f"{self.device!r}. Either use a non-quantized checkpoint (e.g. "
+                "aoi-ot/VibeVoice-Large) or run on CUDA."
+            )
+
+        self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+            self.settings.vibevoice_model_path,
+            device_map="cuda",
+            attn_implementation="sdpa",
+        )
+
+    def _post_load_setup(self):
+        """Final model setup: torch.compile, scheduler, inference steps."""
         # Apply torch.compile for optimized inference
         if self.settings.torch_compile:
             try:
@@ -162,7 +268,7 @@ class TTSService:
 
         # Set inference steps
         self.model.set_ddpm_inference_steps(num_steps=self.settings.vibevoice_inference_steps)
-        
+
         self._model_loaded = True
         print("Model loaded successfully")
 
