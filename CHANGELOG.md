@@ -4,6 +4,26 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.11] — 2026-04-29
+
+### Fixed
+
+- **Pre-quantized loader now pins `bnb_8bit_compute_dtype=torch.bfloat16`.**
+  The Q8 LLM was running matmul in **fp16** (visible as the runtime
+  warning `MatMul8bitLt: inputs will be cast from torch.bfloat16 to
+  float16 during quantization`), because the bundled
+  `quantization_config` in `FabioSarracino/VibeVoice-Large-Q8` doesn't
+  pin `compute_dtype` and BnB defaults to fp16. Every hidden-state batch
+  was being round-tripped bf16 → fp16 → bf16 inside the matmul. fp16's
+  narrower exponent range vs bf16 was producing "wrong but plausible"
+  LLM tokens — accent drift on non-English voices ("Julia" → English
+  "dżulia"), Slavic-but-not-Polish accent, and hallucinated background
+  sounds (e.g. piano BGM matching topical text). Loader now passes an
+  explicit `BitsAndBytesConfig(load_in_8bit=True,
+  bnb_8bit_compute_dtype=torch.bfloat16)` to override the bundled
+  config, mirroring ComfyUI exactly. The runtime warning should
+  disappear.
+
 ## [0.5.10] — 2026-04-29
 
 ### Fixed

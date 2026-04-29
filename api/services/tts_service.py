@@ -226,16 +226,22 @@ class TTSService:
           the audio modules (acoustic_tokenizer, semantic_tokenizer,
           prediction_head, connectors) stay full-precision and MUST load at
           bf16. Without this they default to fp32, mixing precisions across
-          the LLM/audio boundary, which audibly degrades pronunciation,
-          adds start-of-segment artefacts, and can trigger hallucinated
-          background sounds.
+          the LLM/audio boundary.
         - ``device_map='cuda'`` — BnB requires CUDA.
         - ``attn_implementation='sdpa'`` — BnB linear layers are not
           compatible with flash_attention_2.
-        - ``torch_dtype`` is passed alongside the bundled
-          ``quantization_config`` from the model's config.json; transformers
-          honours both: BnB drives LLM dtype, ``torch_dtype`` drives the
-          rest.
+        - **Explicit ``BitsAndBytesConfig(load_in_8bit=True,
+          bnb_8bit_compute_dtype=torch.bfloat16)``** — without this, BnB
+          defaults its ``compute_dtype`` to fp16 and round-trips every
+          hidden-state batch bf16→fp16→bf16 in the matmul (visible as the
+          `MatMul8bitLt: inputs will be cast from torch.bfloat16 to float16
+          during quantization` runtime warning). fp16's narrower exponent
+          range vs bf16 produces "wrong but plausible" LLM tokens —
+          accent drift, English-flavoured phonemes on non-English voices,
+          hallucinated background sounds. ComfyUI sets this explicitly;
+          the bundled `quantization_config` in the FabioSarracino Q8 repo
+          does not pin compute_dtype, so transformers defaults to fp16.
+          Passing our own config overrides whatever the model bundles.
         """
         try:
             import bitsandbytes  # noqa: F401
@@ -252,11 +258,18 @@ class TTSService:
                 "aoi-ot/VibeVoice-Large) or run on CUDA."
             )
 
+        from transformers import BitsAndBytesConfig
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            bnb_8bit_compute_dtype=torch.bfloat16,
+        )
+
         self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
             self.settings.vibevoice_model_path,
             torch_dtype=torch.bfloat16,
             device_map="cuda",
             attn_implementation="sdpa",
+            quantization_config=bnb_config,
         )
 
     def _post_load_setup(self):
