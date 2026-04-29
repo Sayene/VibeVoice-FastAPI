@@ -220,10 +220,21 @@ class TTSService:
     def _load_prequantized_model(self):
         """Load a checkpoint that already carries its own quantization_config.
 
-        Mirrors ComfyUI: device_map='cuda', attn_implementation defaults to
-        sdpa (BnB linear layers are not compatible with flash_attention_2),
-        torch_dtype is intentionally NOT passed so transformers honours the
-        bundled BitsAndBytes config.
+        Mirrors ComfyUI exactly:
+        - ``torch_dtype=torch.bfloat16`` — only the LLM is int8-quantized;
+          the audio modules (acoustic_tokenizer, semantic_tokenizer,
+          prediction_head, connectors) stay full-precision and MUST load at
+          bf16. Without this they default to fp32, mixing precisions across
+          the LLM/audio boundary, which audibly degrades pronunciation,
+          adds start-of-segment artefacts, and can trigger hallucinated
+          background sounds.
+        - ``device_map='cuda'`` — BnB requires CUDA.
+        - ``attn_implementation='sdpa'`` — BnB linear layers are not
+          compatible with flash_attention_2.
+        - ``torch_dtype`` is passed alongside the bundled
+          ``quantization_config`` from the model's config.json; transformers
+          honours both: BnB drives LLM dtype, ``torch_dtype`` drives the
+          rest.
         """
         try:
             import bitsandbytes  # noqa: F401
@@ -242,6 +253,7 @@ class TTSService:
 
         self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
             self.settings.vibevoice_model_path,
+            torch_dtype=torch.bfloat16,
             device_map="cuda",
             attn_implementation="sdpa",
         )

@@ -4,6 +4,25 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.6] — 2026-04-29
+
+### Fixed
+
+- **Pre-quantized model loader now passes `torch_dtype=torch.bfloat16`.**
+  The 0.5.4 fix dropped `torch_dtype` to avoid fighting BitsAndBytes, but
+  Q8 only quantizes the LLM — the audio modules (acoustic_tokenizer,
+  semantic_tokenizer, prediction_head, acoustic/semantic connectors) stay
+  full-precision and MUST load at bf16. Without it they default to fp32
+  and the resulting mixed-precision flow across the LLM/audio boundary
+  audibly degraded output: start-of-segment artefacts, pronunciation
+  drift on non-English voices ("Julia" → English "dżulia"), accent
+  bleed (Polish → Russian-ish), and hallucinated background sounds (e.g.
+  piano BGM matching the topic). Loader now mirrors ComfyUI's
+  `model_kwargs` exactly: `torch_dtype=bfloat16`, `device_map='cuda'`,
+  `attn_implementation='sdpa'`, and lets the bundled
+  `quantization_config` from `config.json` drive the BnB int8 path on the
+  LLM.
+
 ## [0.5.5] — 2026-04-28
 
 ### Added
