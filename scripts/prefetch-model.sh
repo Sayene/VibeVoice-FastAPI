@@ -27,12 +27,26 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env"
 
-# Load .env if present (does not overwrite already-exported vars)
+# Load .env if present, safely. We can't `source` it because values such as
+# OPENAI_VOICE_MAPPING are JSON literals containing braces/commas/quotes that
+# bash would try to execute as shell. Parse one key=value per line instead.
+# Already-exported variables in the caller's environment win.
 if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+    while IFS='=' read -r key value; do
+        # Strip leading whitespace from key
+        key="${key#"${key%%[![:space:]]*}"}"
+        # Skip blanks and comments
+        [[ -z "$key" ]] && continue
+        [[ "$key" =~ ^# ]] && continue
+        # Strip optional surrounding quotes from value
+        if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        # Don't clobber an already-set variable from the caller
+        if [[ -z "${!key+x}" ]]; then
+            export "$key=$value"
+        fi
+    done < "$ENV_FILE"
 fi
 
 MODEL_PATH="${VIBEVOICE_MODEL_PATH:-FabioSarracino/VibeVoice-Large-Q8}"

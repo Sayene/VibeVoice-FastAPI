@@ -4,6 +4,19 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.8] — 2026-04-29
+
+### Fixed
+
+- **`scripts/prefetch-model.sh` no longer chokes on JSON-valued `.env`
+  entries.** The previous version `source`d `.env` directly, which made
+  bash try to execute values like
+  `OPENAI_VOICE_MAPPING={"alloy": "en-Alice_woman", ...}` as shell
+  (`en-Alice_woman,: command not found`). Replaced the loader with the
+  same line-by-line `IFS='=' read` parser used in `start.sh`: skips
+  comments, strips optional surrounding quotes, and never executes the
+  value. Already-exported caller env vars still win over the file.
+
 ## [0.5.7] — 2026-04-29
 
 ### Added
