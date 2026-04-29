@@ -21,4 +21,8 @@ sse-starlette>=1.8.0
 # HTTP client (for testing)
 httpx>=0.26.0
 
+# Faster HuggingFace Hub downloads (rust-based; 3-5× on Xet repos like
+# FabioSarracino/VibeVoice-Large-Q8). Enabled by HF_HUB_ENABLE_HF_TRANSFER=1.
+hf_transfer>=0.1.6
+
 

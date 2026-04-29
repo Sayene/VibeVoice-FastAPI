@@ -1,5 +1,6 @@
 """Core TTS generation service wrapping VibeVoice model."""
 
+import re
 import torch
 import numpy as np
 from typing import Iterator, List, Optional, Union
@@ -371,6 +372,7 @@ class TTSService:
         max_words_per_chunk: int = 0,
         chunk_silence_ms: int = 0,
         voice_sources: Optional[List[str]] = None,
+        warmup_text: Optional[str] = None,
     ) -> Union[np.ndarray, Iterator[np.ndarray]]:
         """
         Generate speech from text.
@@ -414,6 +416,9 @@ class TTSService:
         if len(chunks) > 1:
             logger.info(f"Split script into {len(chunks)} chunks (max {max_words_per_chunk} words/chunk)")
 
+        if warmup_text:
+            chunks = [self._inject_warmup(c, warmup_text) for c in chunks]
+
         self._log_generation_request(
             text=text,
             voice_samples=voice_samples,
@@ -452,6 +457,20 @@ class TTSService:
         # Ensure consistent shape (1D) for concatenation
         flat = [a.reshape(-1) if a.ndim > 1 else a for a in audio_pieces]
         return np.concatenate(flat)
+
+    @staticmethod
+    def _inject_warmup(chunk_text: str, warmup: str) -> str:
+        """Insert ``warmup`` right after every ``Speaker N:`` label in a chunk.
+
+        Multi-speaker chunks (the `/v1/vibevoice/generate` path) can carry
+        multiple ``Speaker N:`` lines; warmup is applied to each so every
+        turn primes the model the same way. If no Speaker label is present
+        we just prepend.
+        """
+        pattern = re.compile(r'(^|\n)(\s*Speaker\s+\d+\s*:\s*)', re.IGNORECASE)
+        if pattern.search(chunk_text):
+            return pattern.sub(lambda m: f"{m.group(1)}{m.group(2)}{warmup}", chunk_text)
+        return f"{warmup}{chunk_text}"
 
     def _log_generation_request(
         self,

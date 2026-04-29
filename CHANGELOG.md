@@ -4,6 +4,40 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.7] — 2026-04-29
+
+### Added
+
+- **`scripts/prefetch-model.sh`** — pre-pull the configured VibeVoice
+  model into the host HuggingFace cache so `docker compose up` doesn't
+  redownload ~12 GB on every boot. Reads `VIBEVOICE_MODEL_PATH`,
+  `HF_CACHE_DIR`, `HF_TOKEN` from `.env`. Resolves the downloader in this
+  order:
+  1. host `huggingface-cli` (if installed),
+  2. host `python3 -m huggingface_hub.commands.huggingface_cli` (if
+     `huggingface_hub` is importable, e.g. inside an active venv),
+  3. fallback `docker run` against the prebuilt API image — works even on
+     hosts that have nothing installed besides docker.
+  Uses `HF_HUB_ENABLE_HF_TRANSFER=1` for 3–5× faster Xet downloads.
+- **`hf_transfer>=0.1.6`** added to `requirements-api.txt` so the docker
+  fallback path of the prefetch script (and any in-container HF download)
+  benefits from the rust-based downloader.
+- **Configurable `warmup_text`** to suppress start-of-audio artefacts.
+  Off by default (`DEFAULT_WARMUP_TEXT=""`). When set, the string is
+  injected right after every `Speaker N:` label of every generated chunk
+  before generation — the model briefly speaks the warmup, masking the
+  artefact, then settles. Ports the workflow used in front of the
+  VibeVoice-ComfyUI TTS node. Per-request override via the new
+  `warmup_text` field on `OpenAITTSRequest` and `VibeVoiceGenerateRequest`.
+
+### Documentation
+
+- **`DGX_SPARK_SETUP.md`** — new "Pre-pull the model (recommended)" step
+  explaining why the first boot otherwise takes 10+ minutes and how
+  partial downloads get discarded on container restart.
+- **`env.example`** / **`docker-env.example`** — documented `HF_CACHE_DIR`
+  caveat (compose does not expand `~`) and the prefetch path.
+
 ## [0.5.6] — 2026-04-29
 
 ### Fixed

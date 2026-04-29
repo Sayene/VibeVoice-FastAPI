@@ -123,12 +123,34 @@ page while logged in and click **Access repository**.
 
 ```bash
 # First build pulls ~15 GB NGC image; subsequent builds are fast.
-docker compose -f docker-compose.spark.yml build
+docker compose -f docker-compose.spark.yml build --no-cache
+```
 
+### 4a. Pre-pull the model (recommended)
+
+VibeVoice-Large-Q8 is ~12 GB. If the container restarts mid-download (which
+docker-compose's healthcheck or a manual restart can trigger), the partial
+shards are discarded and the next boot starts over from scratch. Pre-pulling
+once on the host avoids that completely:
+
+```bash
+# Reads VIBEVOICE_MODEL_PATH, HF_CACHE_DIR, HF_TOKEN from ./.env.
+# Tries `huggingface-cli` on host first, then host python3 + huggingface_hub,
+# then falls back to running inside the built docker image (so it works even
+# if the host has nothing besides docker installed).
+./scripts/prefetch-model.sh
+```
+
+After this completes, every `docker compose up` loads the model from disk in
+under a minute.
+
+### 4b. Launch
+
+```bash
 docker compose -f docker-compose.spark.yml up -d
 ```
 
-Watch the logs — first launch downloads the model (~3 GB for VibeVoice-1.5B):
+Watch the logs:
 
 ```bash
 docker compose -f docker-compose.spark.yml logs -f

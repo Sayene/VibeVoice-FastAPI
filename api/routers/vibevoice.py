@@ -177,6 +177,10 @@ async def generate_speech(
         do_sample = request.do_sample
         if do_sample is None and (request.temperature is not None or request.top_p is not None):
             do_sample = True
+        warmup_text = (
+            request.warmup_text if request.warmup_text is not None
+            else settings.default_warmup_text
+        )
 
         if request.stream:
             text_preview = request.script[:100] + "..." if len(request.script) > 100 else request.script
@@ -200,6 +204,7 @@ async def generate_speech(
                 top_p=request.top_p,
                 max_words_per_chunk=max_words,
                 voice_sources=voice_sources,
+                warmup_text=warmup_text,
             )
 
             return create_streaming_response(
@@ -224,6 +229,7 @@ async def generate_speech(
                 max_words_per_chunk=max_words,
                 chunk_silence_ms=chunk_silence_ms,
                 voice_sources=voice_sources,
+                warmup_text=warmup_text,
             )
             generation_time = time.time() - start_time
 

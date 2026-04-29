@@ -164,6 +164,18 @@ class Settings(BaseSettings):
         default=500,
         description="Silence (ms) inserted between concatenated chunks (non-streaming).",
     )
+    default_warmup_text: str = Field(
+        default="",
+        description=(
+            "Optional 'warmup' string injected right after the `Speaker N:` "
+            "label of every generated chunk to suppress start-of-audio "
+            "artefacts (ports the trick used as a separate node in front of "
+            "VibeVoice-ComfyUI's TTS node). The model briefly speaks this "
+            "warmup before settling into the real content; pick a short "
+            "neutral token like `/`, `... `, or `Hm,`. Empty disables the "
+            "feature. Per-request override: `warmup_text`."
+        ),
+    )
     
     # Logging
     log_level: str = Field(

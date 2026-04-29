@@ -90,6 +90,16 @@ class OpenAITTSRequest(BaseModel):
         le=5000,
         description="Silence (ms) inserted between concatenated chunks.",
     )
+    warmup_text: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Short string injected right after the `Speaker N:` label of every "
+            "chunk before generation, to suppress start-of-audio artefacts. "
+            "Empty string disables; `null` falls back to the server default "
+            "(`DEFAULT_WARMUP_TEXT`)."
+        ),
+    )
 
     # Note: Voice validation removed to allow any VibeVoice preset name
     # Validation happens in the endpoint with proper error messages
@@ -247,6 +257,16 @@ class VibeVoiceGenerateRequest(BaseModel):
         description=(
             "Silence (in milliseconds) inserted between concatenated chunks. "
             "Only applies in non-streaming mode."
+        ),
+    )
+    warmup_text: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Short string injected right after the `Speaker N:` label of every "
+            "chunk before generation, to suppress start-of-audio artefacts. "
+            "Empty string disables; `null` falls back to the server default "
+            "(`DEFAULT_WARMUP_TEXT`)."
         ),
     )
 

@@ -104,9 +104,16 @@ LOG_LEVEL=INFO
 # They are NOT used by the Python app itself.
 # Set these to absolute paths on your host system.
 
-# Path to HuggingFace cache on host (optional, for faster model loading)
-# Mounted to /root/.cache/huggingface in container
+# Path to HuggingFace cache on host. Mounted to /root/.cache/huggingface
+# in the container. Set this to a real persistent path — the docker-compose
+# default `~/.cache/huggingface` is NOT expanded by compose (compose treats
+# the literal `~` as a folder name), so leaving it unset causes the model
+# to be re-downloaded on every restart.
 # HF_CACHE_DIR=/home/user/.cache/huggingface
+#
+# Pre-pull the model once before the first `docker compose up` to avoid a
+# ~10 minute download blocking the first boot:
+#   ./scripts/prefetch-model.sh
 
 # Path to models directory on host (optional)
 # Mounted to /app/models in container
