@@ -4,6 +4,27 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.10] — 2026-04-29
+
+### Fixed
+
+- **`scripts/prefetch-model.sh`: `hf_transfer` is now opt-in per-runtime,
+  not opt-out.** v0.5.9 still tripped the `huggingface_hub` hard error
+  (`Fast download ... but 'hf_transfer' package is not available`)
+  because the host-Python probe didn't match the actual interpreter the
+  selected launcher used (e.g. pipx-installed `huggingface-cli` runs from
+  its own venv, separate from system `python3`). New behaviour:
+  - default is `HF_HUB_ENABLE_HF_TRANSFER=0`;
+  - the script unsets any inherited value of that var so a stray export
+    can't leak in;
+  - each launcher (`huggingface-cli`, `python3 -m huggingface_hub`, the
+    docker image) probes its own runtime by importing `hf_transfer`
+    before flipping the flag on;
+  - the host-CLI probe additionally inspects the cli's shebang to
+    target its actual interpreter, not just system `python3`.
+  Net effect: the fast path is used whenever it can be, and never causes
+  a hard error when it can't.
+
 ## [0.5.9] — 2026-04-29
 
 ### Fixed
