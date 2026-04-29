@@ -4,6 +4,29 @@ All notable changes to this fork of VibeVoice-FastAPI are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.9] — 2026-04-29
+
+### Fixed
+
+- **`scripts/prefetch-model.sh` no longer hard-fails when host Python
+  doesn't have `hf_transfer`.** Probes for it before invoking the
+  downloader; if missing, auto-disables `HF_HUB_ENABLE_HF_TRANSFER` and
+  prints the install hint, instead of letting `huggingface_hub` error out
+  with `Fast download using 'hf_transfer' is enabled but ... not
+  available`. Useful on PEP 668 externally-managed hosts (Debian/Ubuntu
+  system Python) where `pip install hf_transfer` is blocked.
+
+### Added
+
+- **`PREFETCH_VIA_DOCKER=1`** opt-in toggle for `prefetch-model.sh`.
+  Forces the docker fallback path even when the host has
+  `huggingface-cli` / `huggingface_hub` available. The API image already
+  ships `hf_transfer`, so this restores the 3–5× rust-downloader speedup
+  on hosts where the host Python can't install it.
+  ```bash
+  PREFETCH_VIA_DOCKER=1 ./scripts/prefetch-model.sh
+  ```
+
 ## [0.5.8] — 2026-04-29
 
 ### Fixed

@@ -19,8 +19,13 @@
 #      Python or huggingface_hub installed at all — just docker.
 #
 # Set HF_HUB_ENABLE_HF_TRANSFER=1 (default) to use the rust-based downloader
-# (3-5× faster on Xet-backed repos). Disable with HF_HUB_ENABLE_HF_TRANSFER=0
-# if you hit issues; falls back to the standard requests-based downloader.
+# (3-5× faster on Xet-backed repos). The script auto-disables it if the
+# selected runtime cannot import hf_transfer (e.g. host python is PEP 668
+# externally-managed and `pip install hf_transfer` is blocked).
+#
+# To keep the fast path on such hosts, force the docker fallback: it uses
+# the API image where hf_transfer is preinstalled.
+#   PREFETCH_VIA_DOCKER=1 ./scripts/prefetch-model.sh
 
 set -euo pipefail
 
@@ -58,6 +63,27 @@ ENABLE_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 PREFETCH_IMAGE="${PREFETCH_IMAGE:-vibevoice-api:spark}"
 
 mkdir -p "$HF_CACHE"
+
+# Decide whether HF_HUB_ENABLE_HF_TRANSFER can actually be honoured by the
+# python runtime that will perform the download. Without this probe the rust
+# downloader bails out with a hard error if the package isn't importable.
+probe_host_hf_transfer() {
+    python3 -c "import hf_transfer" >/dev/null 2>&1
+}
+
+if [[ "$ENABLE_TRANSFER" == "1" ]]; then
+    if command -v python3 >/dev/null 2>&1 && ! probe_host_hf_transfer; then
+        # Only matters for the host CLI / host python paths. The docker
+        # fallback uses the API image which ships hf_transfer (since v0.5.7).
+        if command -v huggingface-cli >/dev/null 2>&1 \
+           || python3 -c "import huggingface_hub" >/dev/null 2>&1; then
+            echo "[!] hf_transfer not installed in host python — falling back to the"
+            echo "    standard requests-based downloader (slower on Xet repos)."
+            echo "    To enable the fast path:  pip install hf_transfer"
+            ENABLE_TRANSFER=0
+        fi
+    fi
+fi
 
 echo "============================================================"
 echo "VibeVoice model prefetch"
@@ -111,7 +137,12 @@ except Exception as e:
 "
 }
 
-if command -v huggingface-cli >/dev/null 2>&1; then
+if [[ "${PREFETCH_VIA_DOCKER:-0}" == "1" ]]; then
+    echo "[1/1] PREFETCH_VIA_DOCKER=1 — using docker image '$PREFETCH_IMAGE'..."
+    # The api image ships hf_transfer (requirements-api.txt), so the rust
+    # fast path works there even when the host can't install it (PEP 668).
+    run_with_docker
+elif command -v huggingface-cli >/dev/null 2>&1; then
     echo "[1/1] Downloading via host huggingface-cli..."
     run_with_host_cli
 elif python3 -c "import huggingface_hub" >/dev/null 2>&1; then
